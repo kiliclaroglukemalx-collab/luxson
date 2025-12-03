@@ -93,7 +93,7 @@ function App() {
         )}
 
         {currentPage === 'performance' && (
-          <PerformanceReports />
+          <PerformanceReports refreshTrigger={refreshTrigger} />
         )}
 
         {currentPage === 'shifts' && (

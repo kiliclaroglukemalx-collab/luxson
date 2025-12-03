@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import type { PaymentSystemTransaction } from '../lib/supabase';
 import { PaymentSystemUpload } from './PaymentSystemUpload';
 import ExcelExportPanel from './ExcelExportPanel';
+import { matchBonusesToDeposits, analyzeWithdrawals } from '../utils/matchingEngine';
 
 interface EmployeeStats {
   id: string;
@@ -29,7 +30,11 @@ interface PaymentSystemStats {
 
 type ReportTab = 'personnel' | 'payment-systems';
 
-export default function PerformanceReports() {
+interface PerformanceReportsProps {
+  refreshTrigger?: number;
+}
+
+export default function PerformanceReports({ refreshTrigger = 0 }: PerformanceReportsProps) {
   const [activeTab, setActiveTab] = useState<ReportTab>('personnel');
   const [employeeStats, setEmployeeStats] = useState<EmployeeStats[]>([]);
   const [paymentTransactions, setPaymentTransactions] = useState<PaymentSystemTransaction[]>([]);
@@ -43,6 +48,13 @@ export default function PerformanceReports() {
     fastestSystem: '',
     slowestSystem: ''
   });
+
+  // Run calculations when refreshTrigger changes (after data upload)
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      runCalculations();
+    }
+  }, [refreshTrigger]);
 
   useEffect(() => {
     loadAllData();
@@ -74,6 +86,27 @@ export default function PerformanceReports() {
     d.setDate(diff);
     d.setHours(0, 0, 0, 0);
     return d.toISOString().split('T')[0];
+  }
+
+  async function runCalculations() {
+    setCalculating(true);
+    try {
+      console.log('Running calculations after data upload...');
+      // First match bonuses to deposits
+      await matchBonusesToDeposits();
+      console.log('Bonus-deposit matching completed');
+      
+      // Then analyze withdrawals
+      await analyzeWithdrawals();
+      console.log('Withdrawal analysis completed');
+      
+      // Reload all data after calculations
+      await loadAllData();
+    } catch (error) {
+      console.error('Error running calculations:', error);
+    } finally {
+      setCalculating(false);
+    }
   }
 
   async function loadAllData() {
