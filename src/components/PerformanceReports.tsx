@@ -17,6 +17,7 @@ interface EmployeeStats {
   rejection_rate: number;
   performance_score: number;
   employee_name?: string;
+  employee_color?: string;
 }
 
 interface PaymentSystemStats {
@@ -377,10 +378,10 @@ export default function PerformanceReports({ refreshTrigger = 0 }: PerformanceRe
           </div>
           <button
             onClick={() => setShowExcelPanel(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg font-semibold shadow-lg transition-all"
+            className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-lg font-semibold shadow-lg transition-all duration-300 transform hover:scale-105 hover:shadow-xl active:scale-95"
           >
-            <Download className="w-5 h-5" />
-            Excel İndir
+            <Download className="w-5 h-5 transition-transform duration-300 group-hover:scale-110 group-hover:-translate-y-0.5" />
+            <span>Excel İndir</span>
           </button>
         </div>
       </div>
@@ -390,24 +391,24 @@ export default function PerformanceReports({ refreshTrigger = 0 }: PerformanceRe
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => setActiveTab('personnel')}
-            className={`flex items-center justify-center gap-2 px-6 py-4 rounded-lg font-semibold transition-all ${
+            className={`group flex items-center justify-center gap-2 px-6 py-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 ${
               activeTab === 'personnel'
-                ? 'bg-amber-500 text-white shadow-lg'
-                : 'text-slate-300 hover:bg-slate-700/50'
+                ? 'bg-amber-500 text-white shadow-lg scale-105'
+                : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
             }`}
           >
-            <Users className="w-5 h-5" />
+            <Users className={`w-5 h-5 transition-transform duration-300 ${activeTab === 'personnel' ? '' : 'group-hover:scale-110'}`} />
             <span>Personel Performansı</span>
           </button>
           <button
             onClick={() => setActiveTab('payment-systems')}
-            className={`flex items-center justify-center gap-2 px-6 py-4 rounded-lg font-semibold transition-all ${
+            className={`group flex items-center justify-center gap-2 px-6 py-4 rounded-lg font-semibold transition-all duration-300 transform hover:scale-105 ${
               activeTab === 'payment-systems'
-                ? 'bg-amber-500 text-white shadow-lg'
-                : 'text-slate-300 hover:bg-slate-700/50'
+                ? 'bg-amber-500 text-white shadow-lg scale-105'
+                : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'
             }`}
           >
-            <CreditCard className="w-5 h-5" />
+            <CreditCard className={`w-5 h-5 transition-transform duration-300 ${activeTab === 'payment-systems' ? '' : 'group-hover:scale-110'}`} />
             <span>Ödeme Sistemleri</span>
           </button>
         </div>
@@ -421,9 +422,9 @@ export default function PerformanceReports({ refreshTrigger = 0 }: PerformanceRe
             <button
               onClick={calculateWeeklyStats}
               disabled={calculating}
-              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:from-amber-600 hover:to-amber-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+              className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:from-amber-600 hover:to-amber-700 transition-all duration-300 transform hover:scale-105 hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none shadow-lg"
             >
-              <RefreshCw className={`w-5 h-5 ${calculating ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 transition-transform duration-300 ${calculating ? 'animate-spin' : 'group-hover:rotate-180'}`} />
               <span>{calculating ? 'Hesaplanıyor...' : 'Haftalık İstatistikleri Hesapla'}</span>
             </button>
           </div>
@@ -444,47 +445,75 @@ export default function PerformanceReports({ refreshTrigger = 0 }: PerformanceRe
                 </div>
               </div>
               <div className="p-6">
-                <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {employeeStats.map((stat, index) => {
                     const league = getLeagueInfo(index, employeeStats.length);
+                    // Personel rengini al (varsa)
+                    const employeeColor = stat.employee_color || '#6366f1';
+                    
                     return (
                       <div
                         key={stat.id}
-                        className={`p-6 border rounded-lg ${league.bgColor} ${league.borderColor}`}
+                        className={`
+                          group relative p-6 border-2 rounded-xl transition-all duration-300
+                          transform hover:scale-105 hover:shadow-2xl hover:z-10
+                          ${league.bgColor} ${league.borderColor}
+                          cursor-pointer
+                        `}
+                        style={{
+                          borderLeftWidth: '4px',
+                          borderLeftColor: employeeColor
+                        }}
                       >
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-900/50 text-white font-bold">
-                              {index + 1}
-                            </div>
-                            <div>
-                              <h4 className="text-lg font-semibold text-white">{stat.employee_name}</h4>
-                              <p className={`text-sm font-medium ${league.color}`}>{league.name}</p>
-                            </div>
+                        {/* Rank Badge */}
+                        <div className="absolute -top-3 -right-3 flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 text-white font-bold text-lg shadow-lg">
+                          #{index + 1}
+                        </div>
+
+                        {/* Header */}
+                        <div className="flex items-start gap-4 mb-4">
+                          <div 
+                            className="flex items-center justify-center w-16 h-16 rounded-full text-white font-bold text-2xl shadow-lg transition-transform duration-300 group-hover:scale-110"
+                            style={{ backgroundColor: employeeColor }}
+                          >
+                            {stat.employee_name?.charAt(0).toUpperCase() || '?'}
                           </div>
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-amber-400">{stat.performance_score.toFixed(1)}</div>
-                            <div className="text-xs text-slate-400">Puan</div>
+                          <div className="flex-1">
+                            <h4 className="text-xl font-bold text-white mb-1 group-hover:text-amber-300 transition-colors">
+                              {stat.employee_name || 'Bilinmeyen'}
+                            </h4>
+                            <p className={`text-sm font-semibold ${league.color}`}>{league.name}</p>
+                            <div className="mt-2">
+                              <div className="text-3xl font-bold text-amber-400">{stat.performance_score.toFixed(1)}</div>
+                              <div className="text-xs text-slate-400">Performans Puanı</div>
+                            </div>
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                          <div className="bg-slate-900/30 rounded-lg p-3">
+
+                        {/* Stats Grid */}
+                        <div className="grid grid-cols-2 gap-3 mt-4">
+                          <div className="bg-slate-900/40 rounded-lg p-3 border border-slate-700/50 transition-all duration-300 group-hover:bg-slate-900/60 group-hover:border-amber-500/30">
                             <div className="text-xs text-slate-400 mb-1">Toplam İşlem</div>
-                            <div className="text-lg font-semibold text-white">{stat.total_withdrawals}</div>
+                            <div className="text-xl font-bold text-white">{stat.total_withdrawals}</div>
                           </div>
-                          <div className="bg-slate-900/30 rounded-lg p-3">
+                          <div className="bg-slate-900/40 rounded-lg p-3 border border-slate-700/50 transition-all duration-300 group-hover:bg-slate-900/60 group-hover:border-amber-500/30">
                             <div className="text-xs text-slate-400 mb-1">Toplam Tutar</div>
-                            <div className="text-lg font-semibold text-white">{stat.total_amount.toLocaleString('tr-TR')} ₺</div>
+                            <div className="text-lg font-bold text-white">{stat.total_amount.toLocaleString('tr-TR')} ₺</div>
                           </div>
-                          <div className="bg-slate-900/30 rounded-lg p-3">
+                          <div className="bg-slate-900/40 rounded-lg p-3 border border-slate-700/50 transition-all duration-300 group-hover:bg-slate-900/60 group-hover:border-amber-500/30">
                             <div className="text-xs text-slate-400 mb-1">Ort. Süre</div>
-                            <div className="text-lg font-semibold text-white">{formatTime(stat.avg_processing_time)}</div>
+                            <div className="text-lg font-bold text-white">{formatTime(stat.avg_processing_time)}</div>
                           </div>
-                          <div className="bg-slate-900/30 rounded-lg p-3">
+                          <div className="bg-slate-900/40 rounded-lg p-3 border border-slate-700/50 transition-all duration-300 group-hover:bg-slate-900/60 group-hover:border-amber-500/30">
                             <div className="text-xs text-slate-400 mb-1">Red Oranı</div>
-                            <div className="text-lg font-semibold text-white">{stat.rejection_rate.toFixed(1)}%</div>
+                            <div className={`text-lg font-bold ${stat.rejection_rate > 10 ? 'text-red-400' : stat.rejection_rate > 5 ? 'text-amber-400' : 'text-green-400'}`}>
+                              {stat.rejection_rate.toFixed(1)}%
+                            </div>
                           </div>
                         </div>
+
+                        {/* Hover Effect Overlay */}
+                        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-amber-500/0 via-amber-500/5 to-amber-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
                       </div>
                     );
                   })}
