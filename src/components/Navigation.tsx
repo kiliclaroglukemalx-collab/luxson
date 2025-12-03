@@ -1,4 +1,4 @@
-import { Settings, Upload, BarChart3, CreditCard, Calendar, Tag, TrendingUp, Menu, X, Bug } from 'lucide-react';
+import { Settings, Upload, BarChart3, CreditCard, Calendar, Tag, TrendingUp, Menu, X, Bug, Users } from 'lucide-react';
 import { useState } from 'react';
 
 interface NavigationProps {
