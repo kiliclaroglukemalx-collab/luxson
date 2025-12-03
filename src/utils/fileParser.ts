@@ -223,20 +223,35 @@ export function parseBonusFile(content: string): ParsedBonus[] {
   const bonuses: ParsedBonus[] = [];
   
   // Hem tab hem de virgül ile ayrılmış dosyaları destekle
-  const delimiter = lines[0].includes('\t') ? '\t' : (lines[0].includes(',') ? ',' : '\t');
-  const headers = lines[0].split(delimiter).map(h => h.trim());
+  // Delimiter'ı daha esnek algıla - tab, virgül, pipe, slash
+  const detectDelimiter = (line: string): string => {
+    const tabCount = (line.match(/\t/g) || []).length;
+    const commaCount = (line.match(/,/g) || []).length;
+    const pipeCount = (line.match(/\|/g) || []).length;
+    
+    if (tabCount > commaCount && tabCount > pipeCount) return '\t';
+    if (pipeCount > commaCount) return '|';
+    if (commaCount > 0) return ',';
+    return '\t'; // Default
+  };
+  
+  const delimiter = detectDelimiter(lines[0]);
+  const headers = lines[0].split(new RegExp(`[${delimiter === '\t' ? '\\t' : delimiter}]`)).map(h => h.trim()).filter(h => h);
   
   // Sütun haritası oluştur
   const columnMap = buildColumnMap(headers, COLUMN_MAPPINGS.bonuses);
   
   console.log('Bonus Headers:', headers);
   console.log('Bonus Column Map:', columnMap);
-  console.log('Delimiter detected:', delimiter);
+  console.log('Delimiter detected:', delimiter === '\t' ? 'TAB' : delimiter);
   console.log('Total lines:', lines.length);
   
   // Veri satırlarını işle
   for (let i = 1; i < lines.length; i++) {
-    const columns = lines[i].split(delimiter).map(col => col.trim());
+    // Her satır için delimiter'ı tekrar algıla (bazı satırlarda farklı olabilir)
+    const lineDelimiter = detectDelimiter(lines[i]);
+    const splitPattern = new RegExp(`[${lineDelimiter === '\t' ? '\\t' : lineDelimiter}]`);
+    const columns = lines[i].split(splitPattern).map(col => col.trim()).filter(col => col);
     
     if (columns.length < 2) {
       console.warn(`Skipping line ${i}: insufficient columns (${columns.length})`);
@@ -356,11 +371,23 @@ export function parseBonusFile(content: string): ParsedBonus[] {
     // Minimum gereksinimler: customer_id, bonus_name, amount
     if (!customer_id || !bonus_name || !amount) {
       console.warn(`Skipping line ${i}: missing required fields`, {
-        customer_id: !!customer_id,
-        bonus_name: !!bonus_name,
-        amount: !!amount,
-        columns: columns.slice(0, 5)
+        customer_id: customer_id || 'MISSING',
+        bonus_name: bonus_name || 'MISSING',
+        amount: amount || 'MISSING',
+        columnCount: columns.length,
+        allColumns: columns.slice(0, 10),
+        firstFewColumns: columns.slice(0, 5).map((c, idx) => `[${idx}]: "${c}"`).join(', ')
       });
+      // İlk birkaç satırı detaylı göster
+      if (i <= 3) {
+        console.log(`Line ${i} detailed:`, {
+          rawLine: lines[i].substring(0, 200),
+          columns: columns,
+          customer_id_index: columnMap.customer_id ?? 0,
+          bonus_name_index: columnMap.bonus_name ?? 'auto-detect',
+          amount_index: columnMap.amount ?? 'auto-detect'
+        });
+      }
       continue;
     }
     
@@ -391,11 +418,32 @@ export function parseBonusFile(content: string): ParsedBonus[] {
       created_by: created_by?.trim() || undefined,
       btag: btag?.trim() || undefined,
     });
+    
+    // İlk birkaç başarılı parse'ı logla
+    if (bonuses.length <= 3) {
+      console.log(`Successfully parsed bonus ${bonuses.length}:`, {
+        customer_id,
+        bonus_name,
+        amount: parsedAmount,
+        acceptance_date: finalAcceptanceDate
+      });
+    }
   }
   
   console.log('Parsed bonuses:', bonuses.length);
   if (bonuses.length === 0) {
-    console.error('No valid bonus records found. First few lines:', lines.slice(0, 5));
+    console.error('No valid bonus records found.');
+    console.log('First few lines:', lines.slice(0, 5));
+    const firstDataLine = lines[1];
+    if (firstDataLine) {
+      const tabCount = (firstDataLine.match(/\t/g) || []).length;
+      const commaCount = (firstDataLine.match(/,/g) || []).length;
+      const pipeCount = (firstDataLine.match(/\|/g) || []).length;
+      const firstDelimiter = tabCount > commaCount && tabCount > pipeCount ? '\t' : 
+                            (pipeCount > commaCount ? '|' : (commaCount > 0 ? ',' : '\t'));
+      const splitPattern = new RegExp(`[${firstDelimiter === '\t' ? '\\t' : firstDelimiter}]`);
+      console.log('First line columns:', firstDataLine.split(splitPattern).slice(0, 10));
+    }
   }
   return bonuses;
 }
