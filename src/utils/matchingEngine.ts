@@ -157,12 +157,14 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
   // Get all deposits
   const { data: deposits } = await supabase
     .from('deposits')
-    .select('*');
+    .select('*')
+    .order('deposit_date');
 
   // Get all bonuses
   const { data: bonuses } = await supabase
     .from('bonuses')
-    .select('*');
+    .select('*')
+    .order('acceptance_date');
 
   // Get all bonus rules
   const { data: bonusRules } = await supabase
@@ -173,33 +175,90 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
 
   for (const withdrawal of withdrawals) {
     const requestDate = new Date(withdrawal.request_date);
-    const paymentDate = new Date(withdrawal.payment_date);
+    const paymentDate = withdrawal.payment_date ? new Date(withdrawal.payment_date) : requestDate;
 
     // Calculate processing time
     const processingTimeMs = paymentDate.getTime() - requestDate.getTime();
     const processingTimeMinutes = Math.round(processingTimeMs / 1000 / 60);
 
-    // Find bonuses for this customer that were accepted before the withdrawal
-    const customerBonuses = bonuses.filter(b =>
-      b.customer_id === withdrawal.customer_id &&
-      new Date(b.acceptance_date) < requestDate
+    // YENİ MANTIK: Yatırım → Bonus → Çekim kontrolü
+    // 1. Bu müşterinin yatırımlarını bul
+    const customerDeposits = deposits.filter(d => 
+      d.customer_id === withdrawal.customer_id
+    ).sort((a, b) => 
+      new Date(a.deposit_date).getTime() - new Date(b.deposit_date).getTime()
     );
 
-    // Get the most recent bonus before this withdrawal
-    const linkedBonus = customerBonuses.length > 0
-      ? customerBonuses.reduce((latest, current) => {
-          const latestDate = new Date(latest.acceptance_date);
-          const currentDate = new Date(current.acceptance_date);
-          return currentDate > latestDate ? current : latest;
-        })
-      : null;
+    let linkedDeposit: Deposit | null = null;
+    let linkedBonus: Bonus | null = null;
 
-    // Find the deposit linked to this bonus
-    const closestDeposit = linkedBonus && linkedBonus.deposit_id
-      ? deposits.find(d => d.id === linkedBonus.deposit_id)
-      : null;
+    // 2. Her yatırım için, yatırımdan hemen sonra bonus var mı kontrol et
+    for (const deposit of customerDeposits) {
+      const depositDate = new Date(deposit.deposit_date);
+      
+      // Bu yatırımdan sonra gelen bonusları bul (created_date veya acceptance_date'e göre)
+      const bonusesAfterDeposit = bonuses.filter(b => {
+        if (b.customer_id !== deposit.customer_id) return false;
+        
+        // Bonus tarihini kontrol et (created_date varsa onu kullan, yoksa acceptance_date)
+        const bonusDate = b.created_date 
+          ? new Date(b.created_date) 
+          : new Date(b.acceptance_date);
+        
+        // Yatırımdan sonra gelen bonus (makul bir süre içinde, örn. 30 gün)
+        const daysDiff = (bonusDate.getTime() - depositDate.getTime()) / (1000 * 60 * 60 * 24);
+        return bonusDate > depositDate && daysDiff <= 30;
+      });
 
-    // Find the bonus rule
+      if (bonusesAfterDeposit.length > 0) {
+        // En yakın (ilk) bonusu seç
+        const closestBonus = bonusesAfterDeposit.reduce((closest, current) => {
+          const closestDate = current.created_date 
+            ? new Date(current.created_date) 
+            : new Date(current.acceptance_date);
+          const currentDate = current.created_date 
+            ? new Date(current.created_date) 
+            : new Date(current.acceptance_date);
+          return currentDate < closestDate ? current : closest;
+        });
+
+        // Bu bonus çekimden önce mi kontrol et
+        const bonusDate = closestBonus.created_date 
+          ? new Date(closestBonus.created_date) 
+          : new Date(closestBonus.acceptance_date);
+        
+        if (bonusDate < requestDate) {
+          linkedDeposit = deposit;
+          linkedBonus = closestBonus;
+          break; // İlk eşleşen yatırım-bonus çiftini kullan
+        }
+      }
+    }
+
+    // Eğer yukarıdaki mantıkla bulunamadıysa, eski mantığı kullan (geriye dönük uyumluluk)
+    if (!linkedBonus) {
+      // Find bonuses for this customer that were accepted before the withdrawal
+      const customerBonuses = bonuses.filter(b =>
+        b.customer_id === withdrawal.customer_id &&
+        new Date(b.acceptance_date) < requestDate
+      );
+
+      // Get the most recent bonus before this withdrawal
+      linkedBonus = customerBonuses.length > 0
+        ? customerBonuses.reduce((latest, current) => {
+            const latestDate = new Date(latest.acceptance_date);
+            const currentDate = new Date(current.acceptance_date);
+            return currentDate > latestDate ? current : latest;
+          })
+        : null;
+
+      // Find the deposit linked to this bonus
+      linkedDeposit = linkedBonus && linkedBonus.deposit_id
+        ? deposits.find(d => d.id === linkedBonus!.deposit_id) || null
+        : null;
+    }
+
+    // 3. Bonus kuralını bul
     const bonusRule = linkedBonus
       ? bonusRules.find(br => {
           // Esnek eşleştirme - tam eşleşme veya içerme kontrolü
@@ -209,19 +268,29 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
         })
       : null;
 
-    // Calculate max allowed withdrawal with advanced logic
+    // 4. Çekim limiti hesapla ve kontrol et
     let maxAllowed = 0;
     let isOverpayment = false;
     let overpaymentAmount = 0;
     let calculationLog = '';
+    let status: 'DOĞRU' | 'HATA' | 'BONUS_YOK' | 'KURAL_YOK' = 'BONUS_YOK';
 
     if (linkedBonus && bonusRule) {
+      calculationLog += `=== ÇEKİM HATA RAPORU ===\n`;
+      calculationLog += `Müşteri: ${withdrawal.customer_id}\n`;
+      calculationLog += `Çekim Miktarı: ${withdrawal.amount}₺\n`;
+      calculationLog += `Çekim Tarihi: ${new Date(withdrawal.request_date).toLocaleString('tr-TR')}\n\n`;
+      
+      if (linkedDeposit) {
+        calculationLog += `Yatırım: ${linkedDeposit.amount}₺ (${new Date(linkedDeposit.deposit_date).toLocaleString('tr-TR')})\n`;
+      }
+      
       calculationLog += `Bonus: ${linkedBonus.bonus_name}\n`;
       calculationLog += `Bonus Miktarı: ${linkedBonus.amount}₺\n`;
-      
-      if (closestDeposit) {
-        calculationLog += `Deposit: ${closestDeposit.amount}₺\n`;
-      }
+      const bonusDate = linkedBonus.created_date 
+        ? new Date(linkedBonus.created_date) 
+        : new Date(linkedBonus.acceptance_date);
+      calculationLog += `Bonus Tarihi: ${bonusDate.toLocaleString('tr-TR')}\n\n`;
       
       // Özel bonus mantığını kontrol et
       const specialLogic = SPECIAL_BONUS_LOGICS.find(logic => 
@@ -230,7 +299,7 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
       
       if (specialLogic?.calculationOverride) {
         // Özel hesaplama mantığı kullan
-        const override = specialLogic.calculationOverride(withdrawal, closestDeposit, linkedBonus, bonusRule);
+        const override = specialLogic.calculationOverride(withdrawal, linkedDeposit, linkedBonus, bonusRule);
         if (override) {
           maxAllowed = override.maxAllowed;
           calculationLog += override.log;
@@ -243,7 +312,7 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
         // Formül bazlı hesaplama - EN GELİŞMİŞ YÖNTEM
         try {
           const variables: Record<string, number> = {
-            deposit: closestDeposit?.amount || 0,
+            deposit: linkedDeposit?.amount || 0,
             bonus: linkedBonus.amount,
             withdrawal: withdrawal.amount,
             multiplier: bonusRule.multiplier || 0,
@@ -263,18 +332,18 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
       } else {
         // Klasik hesaplama tipleri
         if (bonusRule.calculation_type === 'fixed') {
-          if (closestDeposit) {
-            maxAllowed = closestDeposit.amount + bonusRule.fixed_amount;
-            calculationLog += `Hesaplama: Deposit + Sabit Miktar = ${closestDeposit.amount} + ${bonusRule.fixed_amount} = ${maxAllowed}₺\n`;
+          if (linkedDeposit) {
+            maxAllowed = linkedDeposit.amount + bonusRule.fixed_amount;
+            calculationLog += `Hesaplama: Deposit + Sabit Miktar = ${linkedDeposit.amount} + ${bonusRule.fixed_amount} = ${maxAllowed}₺\n`;
           } else {
             maxAllowed = bonusRule.fixed_amount;
             calculationLog += `Hesaplama: Sabit Miktar = ${bonusRule.fixed_amount}₺\n`;
           }
         } else if (bonusRule.calculation_type === 'multiplier') {
-          if (closestDeposit) {
+          if (linkedDeposit) {
             // Önce deposit * multiplier dene
-            maxAllowed = closestDeposit.amount * bonusRule.multiplier;
-            calculationLog += `Hesaplama: Deposit × Çarpan = ${closestDeposit.amount} × ${bonusRule.multiplier} = ${maxAllowed}₺\n`;
+            maxAllowed = linkedDeposit.amount * bonusRule.multiplier;
+            calculationLog += `Hesaplama: Deposit × Çarpan = ${linkedDeposit.amount} × ${bonusRule.multiplier} = ${maxAllowed}₺\n`;
           } else {
             // Deposit yoksa bonus * multiplier
             maxAllowed = linkedBonus.amount * bonusRule.multiplier;
@@ -283,28 +352,41 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
         }
       }
 
-      // Overpayment kontrolü
+      // 5. Fazla ödeme kontrolü - HATA veya DOĞRU not et
       if (maxAllowed !== Infinity) {
         isOverpayment = withdrawal.amount > maxAllowed;
         overpaymentAmount = isOverpayment ? withdrawal.amount - maxAllowed : 0;
         
         if (isOverpayment) {
-          calculationLog += `⚠️ FAZLA ÖDEME TESPİT EDİLDİ!\n`;
-          calculationLog += `Çekilen: ${withdrawal.amount}₺ | Max İzin: ${maxAllowed}₺ | Fazla: ${overpaymentAmount}₺\n`;
+          status = 'HATA';
+          calculationLog += `\n❌ HATA: FAZLA ÖDEME TESPİT EDİLDİ!\n`;
+          calculationLog += `Çekilen: ${withdrawal.amount}₺\n`;
+          calculationLog += `Max İzin Verilen: ${maxAllowed}₺\n`;
+          calculationLog += `Fazla Ödeme: ${overpaymentAmount}₺\n`;
         } else {
-          calculationLog += `✓ Çekim limiti içinde: ${withdrawal.amount}₺ / ${maxAllowed}₺\n`;
+          status = 'DOĞRU';
+          calculationLog += `\n✅ DOĞRU: Çekim limiti içinde\n`;
+          calculationLog += `Çekilen: ${withdrawal.amount}₺\n`;
+          calculationLog += `Max İzin Verilen: ${maxAllowed}₺\n`;
         }
+      } else {
+        // Sınırsız çekim
+        status = 'DOĞRU';
+        calculationLog += `\n✅ DOĞRU: Sınırsız çekim (limit kontrolü yok)\n`;
       }
     } else if (linkedBonus && !bonusRule) {
-      // Bonus var ama kural bulunamadı - UYARI!
-      calculationLog += `⚠️ UYARI: "${linkedBonus.bonus_name}" için kural bulunamadı!\n`;
+      // Bonus var ama kural bulunamadı
+      status = 'KURAL_YOK';
+      calculationLog += `\n⚠️ UYARI: "${linkedBonus.bonus_name}" için kural bulunamadı!\n`;
       calculationLog += `Lütfen bonus kurallarını kontrol edin.\n`;
       maxAllowed = 0;
       isOverpayment = false;
       overpaymentAmount = 0;
     } else {
       // Bonussuz normal çekim
-      calculationLog += 'Bonussuz çekim - Limit kontrolü yok\n';
+      status = 'BONUS_YOK';
+      calculationLog += `\nℹ️ BONUS YOK: Bu çekim için eşleşen bonus bulunamadı\n`;
+      calculationLog += `Limit kontrolü yapılamadı.\n`;
       maxAllowed = 0;
       isOverpayment = false;
       overpaymentAmount = 0;
@@ -314,7 +396,7 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
     await supabase
       .from('withdrawals')
       .update({
-        deposit_id: closestDeposit?.id || null,
+        deposit_id: linkedDeposit?.id || null,
         bonus_id: linkedBonus?.id || null,
         max_allowed_withdrawal: maxAllowed === Infinity ? null : (maxAllowed || null),
         is_overpayment: isOverpayment,
@@ -326,21 +408,21 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
     results.push({
       withdrawal: {
         ...withdrawal,
-        deposit_id: closestDeposit?.id || null,
+        deposit_id: linkedDeposit?.id || null,
         bonus_id: linkedBonus?.id || null,
         max_allowed_withdrawal: maxAllowed === Infinity ? null : maxAllowed,
         is_overpayment: isOverpayment,
         overpayment_amount: overpaymentAmount,
         processing_time_minutes: processingTimeMinutes
       },
-      deposit: closestDeposit || null,
+      deposit: linkedDeposit || null,
       bonus: linkedBonus || null,
       bonusRule: bonusRule || null,
       maxAllowed,
       isOverpayment,
       overpaymentAmount,
       processingTimeMinutes,
-      calculationLog
+      calculationLog: calculationLog + `\n📊 DURUM: ${status}\n`
     });
   }
 
