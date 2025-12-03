@@ -1,4 +1,4 @@
-import { Settings, Upload, BarChart3, CreditCard, Calendar, Tag, TrendingUp, Bug, Users, AlertTriangle } from 'lucide-react';
+import { Settings, Upload, Calendar, Tag, TrendingUp, Bug, Users, AlertTriangle } from 'lucide-react';
 
 interface NavigationProps {
   currentPage: 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug' | 'personel' | 'withdrawal-errors';
