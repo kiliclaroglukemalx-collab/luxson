@@ -36,12 +36,21 @@ const COLUMN_MAPPINGS = {
   },
   bonuses: {
     'Müşteri Kimliği': 'customer_id',
+    'Customer ID': 'customer_id',
+    'Oyuncu Kimliği': 'customer_id',
     'Adı': 'bonus_name',
+    'Bonus Adı': 'bonus_name',
+    'Bonus Name': 'bonus_name',
     'Kabul Tarihi': 'acceptance_date',
+    'Acceptance Date': 'acceptance_date',
     'Miktar': 'amount',
+    'Amount': 'amount',
     'Oluşturuldu': 'created_date',
+    'Created Date': 'created_date',
     'tarafından oluşturuldu': 'created_by',
+    'Created By': 'created_by',
     'BTag': 'btag',
+    'B-Tag': 'btag',
   },
   withdrawals: {
     'Oyuncu Kimliği': 'customer_id',
@@ -211,30 +220,55 @@ export function parseBonusFile(content: string): ParsedBonus[] {
     
     const customer_id = columnMap.customer_id !== undefined ? columns[columnMap.customer_id] : columns[0];
     const bonus_name = columnMap.bonus_name !== undefined ? columns[columnMap.bonus_name] : columns[1];
-    const acceptance_date = columnMap.acceptance_date !== undefined ? columns[columnMap.acceptance_date] : columns[2];
+    
+    // Tarih alanlarını daha güvenli şekilde bul
+    let acceptance_date: string | undefined;
+    if (columnMap.acceptance_date !== undefined) {
+      acceptance_date = columns[columnMap.acceptance_date];
+    } else {
+      // Sütun mapping yoksa, tarih içeren sütunu bul
+      for (let j = 0; j < columns.length; j++) {
+        const col = columns[j]?.trim() || '';
+        if (col && /\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/.test(col)) {
+          acceptance_date = col;
+          break;
+        }
+      }
+    }
+    
     const amount = columnMap.amount !== undefined ? columns[columnMap.amount] : columns[3];
     const created_date = columnMap.created_date !== undefined ? columns[columnMap.created_date] : undefined;
     const created_by = columnMap.created_by !== undefined ? columns[columnMap.created_by] : undefined;
     const btag = columnMap.btag !== undefined ? columns[columnMap.btag] : undefined;
     
     if (customer_id && bonus_name && amount) {
-      const parsedAcceptanceDate = parseDate(acceptance_date || '');
+      // Tarih validasyonu - sadece gerçek tarih formatlarını kabul et
+      const parsedAcceptanceDate = acceptance_date ? parseDate(acceptance_date) : null;
       const parsedCreatedDate = created_date ? parseDate(created_date) : undefined;
       
       // acceptance_date zorunlu, geçersizse kaydı atla
       if (!parsedAcceptanceDate) {
-        console.warn(`Skipping bonus record: invalid acceptance_date "${acceptance_date}"`);
+        console.warn(`Skipping bonus record ${i}: invalid acceptance_date "${acceptance_date}"`, {
+          customer_id,
+          bonus_name,
+          allColumns: columns
+        });
         continue;
       }
       
+      // created_date geçersizse null yap (undefined olarak gönder)
+      if (created_date && !parsedCreatedDate) {
+        console.warn(`Bonus record ${i}: invalid created_date "${created_date}", setting to undefined`);
+      }
+      
       bonuses.push({
-        customer_id,
-        bonus_name,
+        customer_id: customer_id.trim(),
+        bonus_name: bonus_name.trim(),
         amount: parseFloat(amount.replace(/[^\d.-]/g, '') || '0'),
         acceptance_date: parsedAcceptanceDate,
         created_date: parsedCreatedDate || undefined,
-        created_by: created_by || undefined,
-        btag: btag || undefined,
+        created_by: created_by?.trim() || undefined,
+        btag: btag?.trim() || undefined,
       });
     }
   }

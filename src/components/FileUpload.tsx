@@ -62,17 +62,30 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
         await supabase.from('withdrawals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
         await supabase.from('bonuses').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
-        // Insert new bonuses
+        // Insert new bonuses - sadece geçerli kayıtları ekle
+        const validBonuses = bonuses.filter(b => {
+          // acceptance_date zorunlu ve geçerli olmalı
+          if (!b.acceptance_date || !/^\d{4}-\d{2}-\d{2}/.test(b.acceptance_date)) {
+            console.warn('Skipping invalid bonus:', b);
+            return false;
+          }
+          return true;
+        });
+
+        if (validBonuses.length === 0) {
+          throw new Error('Geçerli bonus kaydı bulunamadı. Lütfen dosya formatını kontrol edin.');
+        }
+
         const { error: insertError } = await supabase
           .from('bonuses')
-          .insert(bonuses.map(b => ({
+          .insert(validBonuses.map(b => ({
             customer_id: b.customer_id,
             bonus_name: b.bonus_name,
             amount: b.amount,
             acceptance_date: b.acceptance_date,
-            created_date: b.created_date,
-            created_by: b.created_by,
-            btag: b.btag,
+            created_date: b.created_date || null,
+            created_by: b.created_by || null,
+            btag: b.btag || null,
           })));
 
         if (insertError) throw insertError;
