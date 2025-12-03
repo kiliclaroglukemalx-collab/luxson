@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Users, TrendingUp, Calendar, FileText, Settings as SettingsIcon } from 'lucide-react';
-import EmployeesPage from './pages-personel/EmployeesPage';
-import HomePage from './pages-personel/HomePage';
-import WeeklyReportPage from './pages-personel/WeeklyReportPage';
-import TotalReportPage from './pages-personel/TotalReportPage';
-import ExportSettingsPage from './pages-personel/ExportSettingsPage';
+import EmployeesPage from '../pages-personel/EmployeesPage';
+import HomePage from '../pages-personel/HomePage';
+import WeeklyReportPage from '../pages-personel/WeeklyReportPage';
+import TotalReportPage from '../pages-personel/TotalReportPage';
+import ExportSettingsPage from '../pages-personel/ExportSettingsPage';
 
 type PersonelPage = 'home' | 'employees' | 'weekly' | 'total' | 'settings';
 
