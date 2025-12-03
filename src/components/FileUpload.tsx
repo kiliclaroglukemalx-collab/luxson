@@ -130,19 +130,44 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
         }
 
         // Insert new withdrawals
-        const { data, error: insertError } = await supabase
+        // Try with payment_date first (as per migration schema)
+        let withdrawalData = validWithdrawals.map(w => ({
+          customer_id: w.customer_id,
+          amount: w.amount,
+          request_date: w.request_date,
+          payment_date: w.approval_date || w.request_date,
+          staff_name: w.staff_name || null,
+          konum: w.konum || null,
+          rejection_date: w.rejection_date || null,
+          btag: w.btag || null,
+        }));
+        
+        let { data, error: insertError } = await supabase
           .from('withdrawals')
-          .insert(validWithdrawals.map(w => ({
+          .insert(withdrawalData)
+          .select();
+        
+        // If payment_date column doesn't exist, try without it
+        if (insertError && (insertError.message?.includes('payment_date') || insertError.code === 'PGRST204')) {
+          console.log('payment_date column not found, trying without it...');
+          withdrawalData = validWithdrawals.map(w => ({
             customer_id: w.customer_id,
             amount: w.amount,
             request_date: w.request_date,
-            payment_date: w.approval_date || w.request_date,
             staff_name: w.staff_name || null,
             konum: w.konum || null,
             rejection_date: w.rejection_date || null,
             btag: w.btag || null,
-          })))
-          .select();
+          }));
+          
+          const retryResult = await supabase
+            .from('withdrawals')
+            .insert(withdrawalData)
+            .select();
+          
+          data = retryResult.data;
+          insertError = retryResult.error;
+        }
 
         if (insertError) {
           console.error('Insert error:', insertError);
