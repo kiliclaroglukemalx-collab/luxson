@@ -449,23 +449,57 @@ export function parseBonusFile(content: string): ParsedBonus[] {
 }
 
 export function parseWithdrawalFile(content: string): ParsedWithdrawal[] {
-  const lines = content.split('\n').filter(line => line.trim());
-  if (lines.length < 2) return [];
+  if (!content || content.trim().length === 0) {
+    console.error('Withdrawal file content is empty');
+    return [];
+  }
+
+  // Hem \n hem de \r\n için split
+  const lines = content.split(/\r?\n/).filter(line => line.trim());
+  
+  if (lines.length < 2) {
+    console.error('Withdrawal file has less than 2 lines (header + data)');
+    console.log('Content preview:', content.substring(0, 500));
+    return [];
+  }
   
   const withdrawals: ParsedWithdrawal[] = [];
-  const headers = lines[0].split('\t').map(h => h.trim());
+  
+  // Hem tab hem de virgül ile ayrılmış dosyaları destekle
+  // Delimiter'ı daha esnek algıla - tab, virgül, pipe, slash
+  const detectDelimiter = (line: string): string => {
+    const tabCount = (line.match(/\t/g) || []).length;
+    const commaCount = (line.match(/,/g) || []).length;
+    const pipeCount = (line.match(/\|/g) || []).length;
+    
+    if (tabCount > commaCount && tabCount > pipeCount) return '\t';
+    if (pipeCount > commaCount) return '|';
+    if (commaCount > 0) return ',';
+    return '\t'; // Default
+  };
+  
+  const delimiter = detectDelimiter(lines[0]);
+  const headers = lines[0].split(new RegExp(`[${delimiter === '\t' ? '\\t' : delimiter}]`)).map(h => h.trim()).filter(h => h);
   
   // Sütun haritası oluştur
   const columnMap = buildColumnMap(headers, COLUMN_MAPPINGS.withdrawals);
   
   console.log('Withdrawal Headers:', headers);
   console.log('Withdrawal Column Map:', columnMap);
+  console.log('Delimiter detected:', delimiter === '\t' ? 'TAB' : delimiter);
+  console.log('Total lines:', lines.length);
   
   // Veri satırlarını işle
   for (let i = 1; i < lines.length; i++) {
-    const columns = lines[i].split('\t').map(col => col.trim());
+    // Her satır için delimiter'ı tekrar algıla (bazı satırlarda farklı olabilir)
+    const lineDelimiter = detectDelimiter(lines[i]);
+    const splitPattern = new RegExp(`[${lineDelimiter === '\t' ? '\\t' : lineDelimiter}]`);
+    const columns = lines[i].split(splitPattern).map(col => col.trim()).filter(col => col);
     
-    if (columns.length < 4) continue;
+    if (columns.length < 4) {
+      console.warn(`Skipping line ${i}: insufficient columns (${columns.length})`);
+      continue;
+    }
     
     const customer_id = columnMap.customer_id !== undefined ? columns[columnMap.customer_id] : columns[0];
     const amount = columnMap.amount !== undefined ? columns[columnMap.amount] : columns[1];
@@ -477,30 +511,85 @@ export function parseWithdrawalFile(content: string): ParsedWithdrawal[] {
     const rejection_date = columnMap.rejection_date !== undefined ? columns[columnMap.rejection_date] : undefined;
     const btag = columnMap.btag !== undefined ? columns[columnMap.btag] : undefined;
     
-    if (customer_id && amount && request_date && staff_name) {
-      const parsedRequestDate = parseDate(request_date);
-      const parsedApprovalDate = parseDate(approval_date || request_date);
-      
-      // request_date zorunlu, geçersizse kaydı atla
-      if (!parsedRequestDate || !parsedApprovalDate) {
-        console.warn(`Skipping withdrawal record: invalid dates`);
-        continue;
+    // Minimum gereksinimler: customer_id, amount, request_date
+    if (!customer_id || !amount || !request_date) {
+      console.warn(`Skipping line ${i}: missing required fields`, {
+        customer_id: customer_id || 'MISSING',
+        amount: amount || 'MISSING',
+        request_date: request_date || 'MISSING',
+        columnCount: columns.length,
+        allColumns: columns.slice(0, 10),
+        firstFewColumns: columns.slice(0, 5).map((c, idx) => `[${idx}]: "${c}"`).join(', ')
+      });
+      // İlk birkaç satırı detaylı göster
+      if (i <= 3) {
+        console.log(`Line ${i} detailed:`, {
+          rawLine: lines[i].substring(0, 200),
+          columns: columns,
+          customer_id_index: columnMap.customer_id ?? 0,
+          amount_index: columnMap.amount ?? 1,
+          request_date_index: columnMap.request_date ?? 3
+        });
       }
-      
-      withdrawals.push({
+      continue;
+    }
+    
+    const parsedRequestDate = parseDate(request_date);
+    // approval_date yoksa request_date'i kullan
+    const parsedApprovalDate = approval_date ? parseDate(approval_date) : parsedRequestDate;
+    
+    // request_date zorunlu, geçersizse kaydı atla
+    if (!parsedRequestDate) {
+      console.warn(`Skipping line ${i}: invalid request_date "${request_date}"`);
+      continue;
+    }
+    
+    // approval_date geçersizse request_date'i kullan
+    const finalApprovalDate = parsedApprovalDate || parsedRequestDate;
+    
+    const parsedAmount = parseFloat(amount.replace(/[^\d.-]/g, '') || '0');
+    if (isNaN(parsedAmount) || parsedAmount === 0) {
+      console.warn(`Skipping line ${i}: invalid amount "${amount}"`);
+      continue;
+    }
+    
+    withdrawals.push({
+      customer_id: customer_id.trim(),
+      amount: parsedAmount,
+      request_date: parsedRequestDate,
+      approval_date: finalApprovalDate,
+      rejection_date: rejection_date ? parseDate(rejection_date) : undefined,
+      staff_name: staff_name?.trim() || undefined,
+      konum: konum?.trim() || undefined,
+      btag: btag?.trim() || undefined,
+    });
+    
+    // İlk birkaç başarılı parse'ı logla
+    if (withdrawals.length <= 3) {
+      console.log(`Successfully parsed withdrawal ${withdrawals.length}:`, {
         customer_id,
-        amount: parseFloat(amount.replace(/[^\d.-]/g, '') || '0'),
+        amount: parsedAmount,
         request_date: parsedRequestDate,
-        approval_date: parsedApprovalDate,
-        rejection_date: rejection_date ? parseDate(rejection_date) : undefined,
-        staff_name,
-        konum: konum || undefined,
-        btag: btag || undefined,
+        approval_date: finalApprovalDate
       });
     }
   }
   
   console.log('Parsed withdrawals:', withdrawals.length);
+  if (withdrawals.length === 0) {
+    console.error('No valid withdrawal records found.');
+    console.log('First few lines:', lines.slice(0, 5));
+    const firstDataLine = lines[1];
+    if (firstDataLine) {
+      const tabCount = (firstDataLine.match(/\t/g) || []).length;
+      const commaCount = (firstDataLine.match(/,/g) || []).length;
+      const pipeCount = (firstDataLine.match(/\|/g) || []).length;
+      const firstDelimiter = tabCount > commaCount && tabCount > pipeCount ? '\t' : 
+                            (pipeCount > commaCount ? '|' : (commaCount > 0 ? ',' : '\t'));
+      const splitPattern = new RegExp(`[${firstDelimiter === '\t' ? '\\t' : firstDelimiter}]`);
+      console.log('First line columns:', firstDataLine.split(splitPattern).slice(0, 10));
+    }
+  }
   return withdrawals;
 }
 
