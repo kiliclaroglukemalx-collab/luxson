@@ -85,11 +85,27 @@ function buildColumnMap(headers: string[], mappings: Record<string, string>): Re
   return columnMap;
 }
 
-function parseDate(dateStr: string): string {
-  if (!dateStr || dateStr.trim() === '') return new Date().toISOString();
+function parseDate(dateStr: string): string | null {
+  if (!dateStr || dateStr.trim() === '') return null;
   
-  // DD-MM-YY HH:MM:SS format
-  const parts = dateStr.trim().split(' ');
+  const trimmed = dateStr.trim();
+  
+  // Geçersiz değerleri kontrol et (sayı içermeyen veya çok kısa olan)
+  if (trimmed.length < 5 || !/\d/.test(trimmed)) {
+    console.warn(`Invalid date format: "${trimmed}"`);
+    return null;
+  }
+  
+  // ISO format zaten geçerliyse direkt döndür
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    const date = new Date(trimmed);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+  }
+  
+  // DD-MM-YY HH:MM:SS veya DD/MM/YY HH:MM:SS format
+  const parts = trimmed.split(' ');
   if (parts.length >= 1) {
     const datePart = parts[0];
     const timePart = parts[1] || '00:00:00';
@@ -98,16 +114,38 @@ function parseDate(dateStr: string): string {
     if (dateComponents.length === 3) {
       let [day, month, year] = dateComponents;
       
+      // Sayısal değerleri kontrol et
+      if (!/^\d+$/.test(day) || !/^\d+$/.test(month) || !/^\d+$/.test(year)) {
+        console.warn(`Invalid date components: "${trimmed}"`);
+        return null;
+      }
+      
       // Convert 2-digit year to 4-digit
       if (year.length === 2) {
         year = `20${year}`;
       }
       
-      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${timePart}`;
+      const dateString = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${timePart}`;
+      const date = new Date(dateString);
+      
+      // Geçerli tarih kontrolü
+      if (isNaN(date.getTime())) {
+        console.warn(`Invalid date: "${trimmed}" -> "${dateString}"`);
+        return null;
+      }
+      
+      return date.toISOString();
     }
   }
   
-  return dateStr;
+  // Son çare: Date constructor ile dene
+  const date = new Date(trimmed);
+  if (!isNaN(date.getTime())) {
+    return date.toISOString();
+  }
+  
+  console.warn(`Could not parse date: "${trimmed}"`);
+  return null;
 }
 
 export function parseDepositFile(content: string): ParsedDeposit[] {
@@ -134,10 +172,16 @@ export function parseDepositFile(content: string): ParsedDeposit[] {
     const deposit_date = columnMap.deposit_date !== undefined ? columns[columnMap.deposit_date] : columns[2];
     
     if (customer_id && amount) {
+      const parsedDate = parseDate(deposit_date || '');
+      if (!parsedDate) {
+        console.warn(`Skipping deposit record: invalid deposit_date "${deposit_date}"`);
+        continue;
+      }
+      
       deposits.push({
         customer_id,
         amount: parseFloat(amount.replace(/[^\d.-]/g, '') || '0'),
-        deposit_date: parseDate(deposit_date || '')
+        deposit_date: parsedDate
       });
     }
   }
@@ -174,12 +218,21 @@ export function parseBonusFile(content: string): ParsedBonus[] {
     const btag = columnMap.btag !== undefined ? columns[columnMap.btag] : undefined;
     
     if (customer_id && bonus_name && amount) {
+      const parsedAcceptanceDate = parseDate(acceptance_date || '');
+      const parsedCreatedDate = created_date ? parseDate(created_date) : undefined;
+      
+      // acceptance_date zorunlu, geçersizse kaydı atla
+      if (!parsedAcceptanceDate) {
+        console.warn(`Skipping bonus record: invalid acceptance_date "${acceptance_date}"`);
+        continue;
+      }
+      
       bonuses.push({
         customer_id,
         bonus_name,
         amount: parseFloat(amount.replace(/[^\d.-]/g, '') || '0'),
-        acceptance_date: parseDate(acceptance_date || ''),
-        created_date: created_date ? parseDate(created_date) : undefined,
+        acceptance_date: parsedAcceptanceDate,
+        created_date: parsedCreatedDate || undefined,
         created_by: created_by || undefined,
         btag: btag || undefined,
       });
@@ -220,11 +273,20 @@ export function parseWithdrawalFile(content: string): ParsedWithdrawal[] {
     const btag = columnMap.btag !== undefined ? columns[columnMap.btag] : undefined;
     
     if (customer_id && amount && request_date && staff_name) {
+      const parsedRequestDate = parseDate(request_date);
+      const parsedApprovalDate = parseDate(approval_date || request_date);
+      
+      // request_date zorunlu, geçersizse kaydı atla
+      if (!parsedRequestDate || !parsedApprovalDate) {
+        console.warn(`Skipping withdrawal record: invalid dates`);
+        continue;
+      }
+      
       withdrawals.push({
         customer_id,
         amount: parseFloat(amount.replace(/[^\d.-]/g, '') || '0'),
-        request_date: parseDate(request_date),
-        approval_date: parseDate(approval_date || request_date),
+        request_date: parsedRequestDate,
+        approval_date: parsedApprovalDate,
         rejection_date: rejection_date ? parseDate(rejection_date) : undefined,
         staff_name,
         konum: konum || undefined,
