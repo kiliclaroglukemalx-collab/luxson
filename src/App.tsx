@@ -7,9 +7,10 @@ import SpecialOffers from './components/SpecialOffers';
 import PerformanceReports from './components/PerformanceReports';
 import { CalculationDebugger } from './components/CalculationDebugger';
 import PersonelPerformanceSystem from './components/PersonelPerformanceSystem';
+import { WithdrawalErrorReport } from './components/WithdrawalErrorReport';
 import { BarChart3, User, Shield } from 'lucide-react';
 
-type Page = 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug' | 'personel';
+type Page = 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug' | 'personel' | 'withdrawal-errors';
 
 function App() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -86,6 +87,10 @@ function App() {
 
         {!isUserMode && currentPage === 'rules' && (
           <BonusRulesManager />
+        )}
+
+        {!isUserMode && currentPage === 'withdrawal-errors' && (
+          <WithdrawalErrorReport refreshTrigger={refreshTrigger} />
         )}
 
         {!isUserMode && currentPage === 'debug' && (

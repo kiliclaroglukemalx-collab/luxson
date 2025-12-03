@@ -1,9 +1,9 @@
-import { Settings, Upload, BarChart3, CreditCard, Calendar, Tag, TrendingUp, Menu, X, Bug, Users } from 'lucide-react';
+import { Settings, Upload, BarChart3, CreditCard, Calendar, Tag, TrendingUp, Menu, X, Bug, Users, AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 
 interface NavigationProps {
-  currentPage: 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug';
-  onPageChange: (page: 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug') => void;
+  currentPage: 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug' | 'personel' | 'withdrawal-errors';
+  onPageChange: (page: 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug' | 'personel' | 'withdrawal-errors') => void;
   isUserMode?: boolean;
 }
 
@@ -13,6 +13,7 @@ export function Navigation({ currentPage, onPageChange, isUserMode = false }: Na
   const allNavItems = [
     { id: 'upload' as const, label: 'Dosya Yükleme', icon: Upload, adminOnly: true },
     { id: 'rules' as const, label: 'Bonus Kuralları', icon: Settings, adminOnly: true },
+    { id: 'withdrawal-errors' as const, label: 'Çekim Hata Raporu', icon: AlertTriangle, adminOnly: true },
     { id: 'debug' as const, label: 'Hesaplama Test', icon: Bug, adminOnly: true },
     { id: 'performance' as const, label: 'Performans Raporları', icon: TrendingUp, adminOnly: false },
     { id: 'shifts' as const, label: 'Vardiya Yönetimi', icon: Calendar, adminOnly: false },
