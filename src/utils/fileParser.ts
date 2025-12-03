@@ -200,24 +200,44 @@ export function parseDepositFile(content: string): ParsedDeposit[] {
 }
 
 export function parseBonusFile(content: string): ParsedBonus[] {
-  const lines = content.split('\n').filter(line => line.trim());
-  if (lines.length < 2) return [];
+  if (!content || content.trim().length === 0) {
+    console.error('Bonus file content is empty');
+    return [];
+  }
+
+  // Hem \n hem de \r\n için split
+  const lines = content.split(/\r?\n/).filter(line => line.trim());
+  
+  if (lines.length < 2) {
+    console.error('Bonus file has less than 2 lines (header + data)');
+    console.log('Content preview:', content.substring(0, 500));
+    return [];
+  }
   
   const bonuses: ParsedBonus[] = [];
-  const headers = lines[0].split('\t').map(h => h.trim());
+  
+  // Hem tab hem de virgül ile ayrılmış dosyaları destekle
+  const delimiter = lines[0].includes('\t') ? '\t' : (lines[0].includes(',') ? ',' : '\t');
+  const headers = lines[0].split(delimiter).map(h => h.trim());
   
   // Sütun haritası oluştur
   const columnMap = buildColumnMap(headers, COLUMN_MAPPINGS.bonuses);
   
   console.log('Bonus Headers:', headers);
   console.log('Bonus Column Map:', columnMap);
+  console.log('Delimiter detected:', delimiter);
+  console.log('Total lines:', lines.length);
   
   // Veri satırlarını işle
   for (let i = 1; i < lines.length; i++) {
-    const columns = lines[i].split('\t').map(col => col.trim());
+    const columns = lines[i].split(delimiter).map(col => col.trim());
     
-    if (columns.length < 3) continue;
+    if (columns.length < 2) {
+      console.warn(`Skipping line ${i}: insufficient columns (${columns.length})`);
+      continue;
+    }
     
+    // Sütun mapping varsa kullan, yoksa sırayla al
     const customer_id = columnMap.customer_id !== undefined ? columns[columnMap.customer_id] : columns[0];
     const bonus_name = columnMap.bonus_name !== undefined ? columns[columnMap.bonus_name] : columns[1];
     
@@ -226,54 +246,88 @@ export function parseBonusFile(content: string): ParsedBonus[] {
     if (columnMap.acceptance_date !== undefined) {
       acceptance_date = columns[columnMap.acceptance_date];
     } else {
-      // Sütun mapping yoksa, tarih içeren sütunu bul
-      for (let j = 0; j < columns.length; j++) {
+      // Sütun mapping yoksa, tarih içeren sütunu bul (2. veya 3. sütundan başla)
+      for (let j = 2; j < Math.min(columns.length, 5); j++) {
         const col = columns[j]?.trim() || '';
-        if (col && /\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/.test(col)) {
+        if (col && (/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/.test(col) || /^\d{4}-\d{2}-\d{2}/.test(col))) {
           acceptance_date = col;
           break;
         }
       }
+      // Hala bulunamadıysa, 2. sütunu dene
+      if (!acceptance_date && columns[2]) {
+        acceptance_date = columns[2];
+      }
     }
     
-    const amount = columnMap.amount !== undefined ? columns[columnMap.amount] : columns[3];
+    // Amount'u bul
+    let amount: string | undefined;
+    if (columnMap.amount !== undefined) {
+      amount = columns[columnMap.amount];
+    } else {
+      // Amount genellikle 3. veya 4. sütunda
+      for (let j = 2; j < Math.min(columns.length, 5); j++) {
+        const col = columns[j]?.trim() || '';
+        // Sayısal değer içeriyorsa amount olabilir
+        if (col && /[\d.,]+/.test(col) && !/\d{1,2}[-\/]\d{1,2}/.test(col)) {
+          amount = col;
+          break;
+        }
+      }
+      // Hala bulunamadıysa, 3. sütunu dene
+      if (!amount && columns[3]) {
+        amount = columns[3];
+      }
+    }
+    
     const created_date = columnMap.created_date !== undefined ? columns[columnMap.created_date] : undefined;
     const created_by = columnMap.created_by !== undefined ? columns[columnMap.created_by] : undefined;
     const btag = columnMap.btag !== undefined ? columns[columnMap.btag] : undefined;
     
-    if (customer_id && bonus_name && amount) {
-      // Tarih validasyonu - sadece gerçek tarih formatlarını kabul et
-      const parsedAcceptanceDate = acceptance_date ? parseDate(acceptance_date) : null;
-      const parsedCreatedDate = created_date ? parseDate(created_date) : undefined;
-      
-      // acceptance_date zorunlu, geçersizse kaydı atla
-      if (!parsedAcceptanceDate) {
-        console.warn(`Skipping bonus record ${i}: invalid acceptance_date "${acceptance_date}"`, {
-          customer_id,
-          bonus_name,
-          allColumns: columns
-        });
-        continue;
-      }
-      
-      // created_date geçersizse null yap (undefined olarak gönder)
-      if (created_date && !parsedCreatedDate) {
-        console.warn(`Bonus record ${i}: invalid created_date "${created_date}", setting to undefined`);
-      }
-      
-      bonuses.push({
-        customer_id: customer_id.trim(),
-        bonus_name: bonus_name.trim(),
-        amount: parseFloat(amount.replace(/[^\d.-]/g, '') || '0'),
-        acceptance_date: parsedAcceptanceDate,
-        created_date: parsedCreatedDate || undefined,
-        created_by: created_by?.trim() || undefined,
-        btag: btag?.trim() || undefined,
+    // Minimum gereksinimler: customer_id, bonus_name, amount
+    if (!customer_id || !bonus_name || !amount) {
+      console.warn(`Skipping line ${i}: missing required fields`, {
+        customer_id: !!customer_id,
+        bonus_name: !!bonus_name,
+        amount: !!amount,
+        columns: columns.slice(0, 5)
       });
+      continue;
     }
+    
+    // Tarih validasyonu - sadece gerçek tarih formatlarını kabul et
+    const parsedAcceptanceDate = acceptance_date ? parseDate(acceptance_date) : null;
+    const parsedCreatedDate = created_date ? parseDate(created_date) : undefined;
+    
+    // acceptance_date zorunlu değil, yoksa bugünün tarihini kullan
+    const finalAcceptanceDate = parsedAcceptanceDate || new Date().toISOString();
+    
+    // created_date geçersizse null yap (undefined olarak gönder)
+    if (created_date && !parsedCreatedDate) {
+      console.warn(`Bonus record ${i}: invalid created_date "${created_date}", setting to undefined`);
+    }
+    
+    const parsedAmount = parseFloat(amount.replace(/[^\d.-]/g, '') || '0');
+    if (isNaN(parsedAmount) || parsedAmount === 0) {
+      console.warn(`Skipping line ${i}: invalid amount "${amount}"`);
+      continue;
+    }
+    
+    bonuses.push({
+      customer_id: customer_id.trim(),
+      bonus_name: bonus_name.trim(),
+      amount: parsedAmount,
+      acceptance_date: finalAcceptanceDate,
+      created_date: parsedCreatedDate || undefined,
+      created_by: created_by?.trim() || undefined,
+      btag: btag?.trim() || undefined,
+    });
   }
   
   console.log('Parsed bonuses:', bonuses.length);
+  if (bonuses.length === 0) {
+    console.error('No valid bonus records found. First few lines:', lines.slice(0, 5));
+  }
   return bonuses;
 }
 
