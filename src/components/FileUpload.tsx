@@ -94,42 +94,90 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
 
         setSuccess(`${bonuses.length} bonus kaydı yüklendi`);
       } else if (type === 'withdrawals') {
+        console.log('Parsing withdrawal file...');
+        console.log('Content length:', content.length);
+        console.log('Content preview:', content.substring(0, 500));
+        
         const withdrawals = parseWithdrawalFile(content);
         console.log('Parsed withdrawals:', withdrawals);
-        console.log('Content preview:', content.substring(0, 500));
+        console.log('Withdrawals count:', withdrawals?.length || 0);
 
         if (!withdrawals || withdrawals.length === 0) {
+          console.error('No withdrawals parsed. Content:', content.substring(0, 1000));
           throw new Error('Dosyadan çekim kaydı okunamadı. Lütfen dosya formatını kontrol edin.');
         }
 
+        // Validate withdrawals before inserting
+        const validWithdrawals = withdrawals.filter(w => {
+          if (!w.customer_id || !w.request_date || !w.amount || w.amount <= 0) {
+            console.warn('Skipping invalid withdrawal:', w);
+            return false;
+          }
+          return true;
+        });
+
+        if (validWithdrawals.length === 0) {
+          throw new Error('Geçerli çekim kaydı bulunamadı. Lütfen dosya formatını kontrol edin.');
+        }
+
+        console.log(`Inserting ${validWithdrawals.length} valid withdrawals...`);
+
         // Clear existing withdrawals
-        await supabase.from('withdrawals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        const { error: deleteError } = await supabase.from('withdrawals').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        if (deleteError) {
+          console.error('Delete error:', deleteError);
+          throw deleteError;
+        }
 
         // Insert new withdrawals
-        const { error: insertError } = await supabase
+        const { data, error: insertError } = await supabase
           .from('withdrawals')
-          .insert(withdrawals.map(w => ({
+          .insert(validWithdrawals.map(w => ({
             customer_id: w.customer_id,
             amount: w.amount,
             request_date: w.request_date,
-            payment_date: w.approval_date,
-            staff_name: w.staff_name,
-            konum: w.konum,
-            rejection_date: w.rejection_date,
-            btag: w.btag,
-          })));
+            payment_date: w.approval_date || w.request_date,
+            staff_name: w.staff_name || null,
+            konum: w.konum || null,
+            rejection_date: w.rejection_date || null,
+            btag: w.btag || null,
+          })))
+          .select();
 
-        if (insertError) throw insertError;
+        if (insertError) {
+          console.error('Insert error:', insertError);
+          console.error('Insert error details:', JSON.stringify(insertError, null, 2));
+          throw insertError;
+        }
+
+        console.log('Successfully inserted withdrawals:', data?.length || 0);
 
         await supabase.from('analysis_reports').delete().eq('report_type', 'bonus_analysis');
 
-        setSuccess(`${withdrawals.length} çekim kaydı yüklendi`);
+        setSuccess(`${validWithdrawals.length} çekim kaydı yüklendi`);
       }
 
       onUploadComplete();
     } catch (err) {
       console.error('Upload error:', err);
-      const errorMsg = err instanceof Error ? err.message : 'Dosya yüklenirken hata oluştu';
+      console.error('Upload error type:', typeof err);
+      console.error('Upload error details:', err);
+      
+      let errorMsg = 'Dosya yüklenirken hata oluştu';
+      
+      if (err instanceof Error) {
+        errorMsg = err.message;
+      } else if (err && typeof err === 'object') {
+        // Supabase error
+        if ('message' in err) {
+          errorMsg = String(err.message);
+        } else if ('error' in err && typeof err.error === 'string') {
+          errorMsg = err.error;
+        } else {
+          errorMsg = JSON.stringify(err);
+        }
+      }
+      
       setError(errorMsg);
     } finally {
       setUploading(false);
