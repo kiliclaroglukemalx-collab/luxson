@@ -38,11 +38,14 @@ const COLUMN_MAPPINGS = {
     'Müşteri Kimliği': 'customer_id',
     'Customer ID': 'customer_id',
     'Oyuncu Kimliği': 'customer_id',
+    'Partner Bonusu Harici Kimliği': 'customer_id', // Alternatif
     'Adı': 'bonus_name',
     'Bonus Adı': 'bonus_name',
     'Bonus Name': 'bonus_name',
     'Kabul Tarihi': 'acceptance_date',
     'Acceptance Date': 'acceptance_date',
+    'Toplam Ödenen Miktar': 'amount',
+    'Toplam Ödenen Miktar (TRY)': 'amount',
     'Miktar': 'amount',
     'Amount': 'amount',
     'Oluşturuldu': 'created_date',
@@ -129,11 +132,14 @@ function parseDate(dateStr: string): string | null {
         return null;
       }
       
-      // Convert 2-digit year to 4-digit
+      // Convert 2-digit year to 4-digit (20XX)
       if (year.length === 2) {
-        year = `20${year}`;
+        const yearNum = parseInt(year, 10);
+        // 00-50 arası 2000-2050, 51-99 arası 1951-1999 olarak yorumla
+        year = yearNum <= 50 ? `20${year.padStart(2, '0')}` : `19${year.padStart(2, '0')}`;
       }
       
+      // Tarih formatını düzelt (DD-MM-YY -> YYYY-MM-DD)
       const dateString = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${timePart}`;
       const date = new Date(dateString);
       
@@ -239,44 +245,107 @@ export function parseBonusFile(content: string): ParsedBonus[] {
     
     // Sütun mapping varsa kullan, yoksa sırayla al
     const customer_id = columnMap.customer_id !== undefined ? columns[columnMap.customer_id] : columns[0];
-    const bonus_name = columnMap.bonus_name !== undefined ? columns[columnMap.bonus_name] : columns[1];
     
-    // Tarih alanlarını daha güvenli şekilde bul
+    // Bonus adını bul - genellikle 4. sütunda (index 3) veya "%", "FREESPIN", "BONUS" içeren sütunda
+    let bonus_name: string | undefined;
+    if (columnMap.bonus_name !== undefined) {
+      bonus_name = columns[columnMap.bonus_name];
+    } else {
+      // Önce 4. sütunu kontrol et (index 3) - Excel formatında genellikle burada
+      if (columns[3] && columns[3].trim()) {
+        const col3 = columns[3].trim();
+        // Eğer "%", "BONUS", "FREESPIN", "DENEME" içeriyorsa veya uzunsa bonus adıdır
+        if (col3.includes('%') || col3.includes('BONUS') || col3.includes('FREESPIN') || 
+            col3.includes('DENEME') || col3.includes('CASİNO') || col3.length > 15) {
+          bonus_name = col3;
+        }
+      }
+      
+      // Hala bulunamadıysa, tüm sütunlarda ara
+      if (!bonus_name) {
+        for (let j = 1; j < Math.min(columns.length, 10); j++) {
+          const col = columns[j]?.trim() || '';
+          if (col && (col.includes('%') || col.includes('BONUS') || col.includes('FREESPIN') || 
+                      col.includes('DENEME') || col.includes('CASİNO') || 
+                      (col.length > 15 && !/^\d+$/.test(col) && !/\d{1,2}[-\/]\d{1,2}/.test(col)))) {
+            bonus_name = col;
+            break;
+          }
+        }
+      }
+      
+      // Son çare: 4. sütunu kullan
+      if (!bonus_name && columns[3]) {
+        bonus_name = columns[3].trim();
+      }
+    }
+    
+    // Tarih alanlarını daha güvenli şekilde bul - "02-12-25 00:00:28" formatı
     let acceptance_date: string | undefined;
     if (columnMap.acceptance_date !== undefined) {
       acceptance_date = columns[columnMap.acceptance_date];
     } else {
-      // Sütun mapping yoksa, tarih içeren sütunu bul (2. veya 3. sütundan başla)
-      for (let j = 2; j < Math.min(columns.length, 5); j++) {
+      // Tarih formatını ara: DD-MM-YY HH:MM:SS veya benzeri
+      // Genellikle 8. sütunda (index 7) veya sonraki sütunlarda
+      for (let j = 7; j < columns.length; j++) {
         const col = columns[j]?.trim() || '';
-        if (col && (/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/.test(col) || /^\d{4}-\d{2}-\d{2}/.test(col))) {
+        if (col && (/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}\s+\d{1,2}:\d{2}:\d{2}/.test(col) || 
+                    /\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/.test(col) || 
+                    /^\d{4}-\d{2}-\d{2}/.test(col))) {
           acceptance_date = col;
           break;
         }
       }
-      // Hala bulunamadıysa, 2. sütunu dene
-      if (!acceptance_date && columns[2]) {
-        acceptance_date = columns[2];
+      // Eğer 7. sütundan sonra bulunamadıysa, tüm sütunlarda ara
+      if (!acceptance_date) {
+        for (let j = 0; j < columns.length; j++) {
+          const col = columns[j]?.trim() || '';
+          if (col && (/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}\s+\d{1,2}:\d{2}:\d{2}/.test(col) || 
+                      /\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/.test(col) || 
+                      /^\d{4}-\d{2}-\d{2}/.test(col))) {
+            acceptance_date = col;
+            break;
+          }
+        }
       }
     }
     
-    // Amount'u bul
+    // Amount'u bul - genellikle son sütunlarda veya "Toplam Ödenen Miktar" sütununda
     let amount: string | undefined;
     if (columnMap.amount !== undefined) {
       amount = columns[columnMap.amount];
     } else {
-      // Amount genellikle 3. veya 4. sütunda
-      for (let j = 2; j < Math.min(columns.length, 5); j++) {
-        const col = columns[j]?.trim() || '';
-        // Sayısal değer içeriyorsa amount olabilir
-        if (col && /[\d.,]+/.test(col) && !/\d{1,2}[-\/]\d{1,2}/.test(col)) {
-          amount = col;
-          break;
+      // Amount'u sondan başlayarak ara (genellikle son 3 sütundan birinde)
+      // Önce son sütunu kontrol et
+      if (columns[columns.length - 1]) {
+        const lastCol = columns[columns.length - 1].trim();
+        const numValue = parseFloat(lastCol.replace(/[^\d.-]/g, ''));
+        if (!isNaN(numValue) && numValue > 0 && !/\d{1,2}[-\/]\d{1,2}/.test(lastCol)) {
+          amount = lastCol;
         }
       }
-      // Hala bulunamadıysa, 3. sütunu dene
-      if (!amount && columns[3]) {
-        amount = columns[3];
+      
+      // Son sütun amount değilse, sondan başlayarak ara
+      if (!amount) {
+        for (let j = columns.length - 1; j >= Math.max(0, columns.length - 5); j--) {
+          const col = columns[j]?.trim() || '';
+          // Sayısal değer içeriyorsa ve tarih değilse amount olabilir
+          if (col && !/\d{1,2}[-\/]\d{1,2}/.test(col)) {
+            const numValue = parseFloat(col.replace(/[^\d.-]/g, ''));
+            if (!isNaN(numValue) && numValue > 0) {
+              amount = col;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Hala bulunamadıysa, "Toplam Ödenen Miktar" sütununu ara
+      if (!amount && headers.includes('Toplam Ödenen Miktar')) {
+        const amountColIndex = headers.indexOf('Toplam Ödenen Miktar');
+        if (amountColIndex >= 0 && columns[amountColIndex]) {
+          amount = columns[amountColIndex].trim();
+        }
       }
     }
     
