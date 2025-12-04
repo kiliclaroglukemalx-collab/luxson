@@ -366,8 +366,25 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
         // Sınırsız çekim
         calculationLog += `\n✅ DOĞRU: Sınırsız çekim (limit kontrolü yok)\n`;
       }
+    } else if (linkedBonus && !bonusRule && aiCalculatedRule) {
+      // AI ile hesaplama yap (kural yok ama bonus var)
+      const aiResult = calculateMaxWithdrawal(aiCalculatedRule, linkedDeposit, linkedBonus);
+      maxAllowed = aiResult.maxAllowed;
+      calculationLog += `\n🤖 AI Hesaplama (Kural yok): ${aiResult.calculation}\n`;
+      calculationLog += `AI Güven: ${(aiResult.confidence * 100).toFixed(0)}%\n`;
+      
+      if (maxAllowed !== Infinity) {
+        isOverpayment = withdrawal.amount > maxAllowed;
+        overpaymentAmount = isOverpayment ? withdrawal.amount - maxAllowed : 0;
+        
+        if (isOverpayment) {
+          calculationLog += `❌ HATA: FAZLA ÖDEME (AI Hesaplama)\n`;
+        } else {
+          calculationLog += `✅ DOĞRU: Çekim limiti içinde (AI Hesaplama)\n`;
+        }
+      }
     } else if (linkedBonus && !bonusRule) {
-      // Bonus var ama kural bulunamadı
+      // Bonus var ama kural bulunamadı ve AI da çalışmadı
       calculationLog += `\n⚠️ UYARI: "${linkedBonus.bonus_name}" için kural bulunamadı!\n`;
       calculationLog += `Lütfen bonus kurallarını kontrol edin.\n`;
       maxAllowed = 0;
