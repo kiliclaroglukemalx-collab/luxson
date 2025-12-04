@@ -10,6 +10,8 @@ export function BonusRulesManager() {
   const [editForm, setEditForm] = useState<Partial<BonusRule>>({});
   const [addingNew, setAddingNew] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [formulaType, setFormulaType] = useState<'none' | 'bonus' | 'deposit' | 'deposit_bonus'>('none');
+  const [formulaMultiplier, setFormulaMultiplier] = useState<number>(5);
 
   useEffect(() => {
     loadRules();
@@ -47,6 +49,31 @@ export function BonusRulesManager() {
     setEditingId(rule.id);
     setEditForm(rule);
     setAddingNew(false);
+    
+    // Mevcut formülü parse et
+    const formula = rule.max_withdrawal_formula || '';
+    if (formula.includes('bonus *') && !formula.includes('deposit')) {
+      const match = formula.match(/bonus \* (\d+)/);
+      if (match) {
+        setFormulaType('bonus');
+        setFormulaMultiplier(parseInt(match[1]));
+      }
+    } else if (formula.includes('deposit *') && !formula.includes('bonus')) {
+      const match = formula.match(/deposit \* (\d+)/);
+      if (match) {
+        setFormulaType('deposit');
+        setFormulaMultiplier(parseInt(match[1]));
+      }
+    } else if (formula.includes('(deposit + bonus) *')) {
+      const match = formula.match(/\(deposit \+ bonus\) \* (\d+)/);
+      if (match) {
+        setFormulaType('deposit_bonus');
+        setFormulaMultiplier(parseInt(match[1]));
+      }
+    } else {
+      setFormulaType('none');
+      setFormulaMultiplier(5);
+    }
   };
 
   const startAdd = () => {
@@ -59,37 +86,77 @@ export function BonusRulesManager() {
       fixed_amount: 0,
       max_withdrawal_formula: ''
     });
+    setFormulaType('none');
+    setFormulaMultiplier(5);
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setAddingNew(false);
     setEditForm({});
+    setFormulaType('none');
+    setFormulaMultiplier(5);
   };
 
   const saveRule = async () => {
     try {
+      // Validasyon
+      if (!editForm.bonus_name || editForm.bonus_name.trim() === '') {
+        setMessage({ type: 'error', text: 'Bonus adı gereklidir!' });
+        return;
+      }
+
+      // Formül oluştur
+      let finalFormula = '';
+      if (formulaType !== 'none' && formulaMultiplier > 0) {
+        switch (formulaType) {
+          case 'bonus':
+            finalFormula = `bonus * ${formulaMultiplier}`;
+            break;
+          case 'deposit':
+            finalFormula = `deposit * ${formulaMultiplier}`;
+            break;
+          case 'deposit_bonus':
+            finalFormula = `(deposit + bonus) * ${formulaMultiplier}`;
+            break;
+        }
+      }
+
+      const ruleToSave = {
+        ...editForm,
+        max_withdrawal_formula: finalFormula || (editForm.max_withdrawal_formula || '')
+      };
+
       if (addingNew) {
         const { error } = await supabase
           .from('bonus_rules')
-          .insert([editForm]);
+          .insert([ruleToSave]);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Insert error:', error);
+          throw error;
+        }
         setMessage({ type: 'success', text: 'Yeni bonus kuralı eklendi' });
       } else if (editingId) {
         const { error } = await supabase
           .from('bonus_rules')
-          .update(editForm)
+          .update(ruleToSave)
           .eq('id', editingId);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Update error:', error);
+          throw error;
+        }
         setMessage({ type: 'success', text: 'Bonus kuralı güncellendi' });
       }
 
       await loadRules();
       cancelEdit();
+      setFormulaType('none');
+      setFormulaMultiplier(5);
       setTimeout(() => setMessage(null), 3000);
     } catch (err) {
+      console.error('Save error:', err);
       setMessage({
         type: 'error',
         text: err instanceof Error ? err.message : 'Kaydetme hatası'
@@ -190,31 +257,112 @@ export function BonusRulesManager() {
         <label className="block text-sm font-medium text-slate-200 mb-1">
           Gelişmiş Formül (Opsiyonel)
         </label>
-        <input
-          type="text"
-          value={editForm.max_withdrawal_formula || ''}
-          onChange={(e) => setEditForm({ ...editForm, max_withdrawal_formula: e.target.value })}
-          className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-mono text-sm"
-          placeholder="deposit * 3 + bonus * 20"
-        />
-        <div className="text-xs text-slate-400 space-y-1 bg-slate-900/50 p-3 rounded-lg border border-slate-700">
-          <p className="font-semibold text-amber-400 mb-2">📝 Kullanılabilir Değişkenler:</p>
-          <ul className="space-y-1 list-disc list-inside">
-            <li><code className="text-green-400">deposit</code> - Yatırım miktarı</li>
-            <li><code className="text-green-400">bonus</code> - Bonus miktarı</li>
-            <li><code className="text-green-400">multiplier</code> - Yukarıda tanımlanan çarpan</li>
-            <li><code className="text-green-400">fixed</code> - Yukarıda tanımlanan sabit tutar</li>
-          </ul>
-          <p className="font-semibold text-amber-400 mt-3 mb-2">💡 Örnek Formüller:</p>
-          <ul className="space-y-1 list-disc list-inside">
-            <li><code className="text-blue-400">bonus * 20</code> - Bonus × 20</li>
-            <li><code className="text-blue-400">deposit * 3</code> - Yatırım × 3</li>
-            <li><code className="text-blue-400">deposit + bonus * 10</code> - Yatırım + (Bonus × 10)</li>
-            <li><code className="text-blue-400">(deposit + bonus) * 2</code> - (Yatırım + Bonus) × 2</li>
-            <li><code className="text-blue-400">Math.min(deposit * 5, 10000)</code> - En fazla 10.000₺</li>
-          </ul>
-          <p className="text-amber-300 mt-2">⚠️ Formül varsa, yukarıdaki hesaplama tipini geçersiz kılar.</p>
+        
+        {/* Formül Tipi Seçimi */}
+        <div className="space-y-3">
+          <select
+            value={formulaType}
+            onChange={(e) => {
+              setFormulaType(e.target.value as typeof formulaType);
+              if (e.target.value === 'none') {
+                setEditForm({ ...editForm, max_withdrawal_formula: '' });
+              }
+            }}
+            className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+          >
+            <option value="none">Formül Kullanma</option>
+            <option value="bonus">Bonus Kaç Katı</option>
+            <option value="deposit">Yatırımın Kaç Katı</option>
+            <option value="deposit_bonus">Bonus + Anapara Kaç Katı</option>
+          </select>
+
+          {/* Çarpan Seçimi */}
+          {formulaType !== 'none' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Çarpan Seçimi
+              </label>
+              <div className="grid grid-cols-6 gap-2">
+                {[5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100].map((mult) => (
+                  <button
+                    key={mult}
+                    type="button"
+                    onClick={() => setFormulaMultiplier(mult)}
+                    className={`px-3 py-2 rounded-lg font-semibold transition-all ${
+                      formulaMultiplier === mult
+                        ? 'bg-amber-500 text-white shadow-lg scale-105'
+                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    }`}
+                  >
+                    {mult}x
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  max="1000"
+                  step="5"
+                  value={formulaMultiplier}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 5;
+                    setFormulaMultiplier(val);
+                  }}
+                  className="w-24 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                />
+                <span className="text-sm text-slate-400">(5'er 5'er artırılabilir)</span>
+              </div>
+            </div>
+          )}
+
+          {/* Önizleme */}
+          {formulaType !== 'none' && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+              <p className="text-xs text-amber-300 mb-1">Formül Önizleme:</p>
+              <code className="text-amber-400 font-mono text-sm">
+                {formulaType === 'bonus' && `bonus * ${formulaMultiplier}`}
+                {formulaType === 'deposit' && `deposit * ${formulaMultiplier}`}
+                {formulaType === 'deposit_bonus' && `(deposit + bonus) * ${formulaMultiplier}`}
+              </code>
+              <p className="text-xs text-slate-400 mt-2">
+                {formulaType === 'bonus' && `Maksimum çekim: Bonus miktarının ${formulaMultiplier} katı`}
+                {formulaType === 'deposit' && `Maksimum çekim: Yatırım miktarının ${formulaMultiplier} katı`}
+                {formulaType === 'deposit_bonus' && `Maksimum çekim: (Yatırım + Bonus) miktarının ${formulaMultiplier} katı`}
+              </p>
+            </div>
+          )}
+
+          {/* Manuel Formül Girişi (Gelişmiş) */}
+          <details className="bg-slate-900/50 p-3 rounded-lg border border-slate-700">
+            <summary className="cursor-pointer text-sm text-amber-400 hover:text-amber-300 font-semibold mb-2">
+              🔧 Gelişmiş: Manuel Formül Girişi
+            </summary>
+            <input
+              type="text"
+              value={editForm.max_withdrawal_formula || ''}
+              onChange={(e) => {
+                setEditForm({ ...editForm, max_withdrawal_formula: e.target.value });
+                if (e.target.value) {
+                  setFormulaType('none');
+                }
+              }}
+              className="w-full mt-2 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-mono text-sm"
+              placeholder="deposit * 3 + bonus * 20"
+            />
+            <div className="text-xs text-slate-400 mt-2 space-y-1">
+              <p className="font-semibold text-amber-400 mb-1">📝 Kullanılabilir Değişkenler:</p>
+              <ul className="space-y-1 list-disc list-inside">
+                <li><code className="text-green-400">deposit</code> - Yatırım miktarı</li>
+                <li><code className="text-green-400">bonus</code> - Bonus miktarı</li>
+                <li><code className="text-green-400">multiplier</code> - Yukarıda tanımlanan çarpan</li>
+                <li><code className="text-green-400">fixed</code> - Yukarıda tanımlanan sabit tutar</li>
+              </ul>
+            </div>
+          </details>
         </div>
+
+        <p className="text-amber-300 text-xs mt-2">⚠️ Formül varsa, yukarıdaki hesaplama tipini geçersiz kılar.</p>
       </div>
 
       <div className="flex gap-2">
