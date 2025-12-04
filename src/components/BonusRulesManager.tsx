@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Settings, Save, Plus, Trash2, Edit2, X, AlertCircle } from 'lucide-react';
+import { Settings, Save, Plus, Trash2, Edit2, X, AlertCircle, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { BonusRule } from '../lib/supabase';
+import { parseNaturalLanguageFormula } from '../utils/formulaParser';
 
 export function BonusRulesManager() {
   const [rules, setRules] = useState<BonusRule[]>([]);
@@ -108,6 +109,8 @@ export function BonusRulesManager() {
 
       // Formül oluştur
       let finalFormula = '';
+      
+      // Önce seçimli formülü kontrol et
       if (formulaType !== 'none' && formulaMultiplier > 0) {
         switch (formulaType) {
           case 'bonus':
@@ -121,15 +124,31 @@ export function BonusRulesManager() {
             break;
         }
       }
+      
+      // Eğer manuel formül varsa ve doğal dil içeriyorsa parse et
+      const manualFormula = editForm.max_withdrawal_formula?.trim() || '';
+      if (manualFormula && !finalFormula) {
+        // Doğal dil mi kontrol et
+        const parsed = parseNaturalLanguageFormula(manualFormula);
+        if (parsed && parsed.confidence > 0.5) {
+          finalFormula = parsed.formula;
+          console.log('Doğal dil formülü parse edildi:', parsed);
+        } else {
+          // Zaten matematiksel formül ise direkt kullan
+          finalFormula = manualFormula;
+        }
+      }
 
-      // Database'de max_withdrawal_formula NOT NULL olduğu için boş string yerine boşluk gönderiyoruz
+      // Database'de max_withdrawal_formula NOT NULL olduğu için boş string yerine 'Sınırsız' gönderiyoruz
       const ruleToSave = {
         bonus_name: editForm.bonus_name?.trim(),
         calculation_type: editForm.calculation_type || 'unlimited',
         multiplier: editForm.multiplier || 0,
         fixed_amount: editForm.fixed_amount || 0,
-        max_withdrawal_formula: finalFormula || (editForm.max_withdrawal_formula || ' ')
+        max_withdrawal_formula: finalFormula || 'Sınırsız'
       };
+
+      console.log('Kaydedilecek kural:', ruleToSave);
 
       if (addingNew) {
         const { data, error } = await supabase
@@ -346,11 +365,11 @@ export function BonusRulesManager() {
 
           {/* Manuel Formül Girişi (Gelişmiş) */}
           <details className="bg-slate-900/50 p-3 rounded-lg border border-slate-700">
-            <summary className="cursor-pointer text-sm text-amber-400 hover:text-amber-300 font-semibold mb-2">
-              🔧 Gelişmiş: Manuel Formül Girişi
+            <summary className="cursor-pointer text-sm text-amber-400 hover:text-amber-300 font-semibold mb-2 flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              Gelişmiş: Manuel Formül veya Doğal Dil Yorumu
             </summary>
-            <input
-              type="text"
+            <textarea
               value={editForm.max_withdrawal_formula || ''}
               onChange={(e) => {
                 setEditForm({ ...editForm, max_withdrawal_formula: e.target.value });
@@ -358,9 +377,32 @@ export function BonusRulesManager() {
                   setFormulaType('none');
                 }
               }}
-              className="w-full mt-2 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-mono text-sm"
-              placeholder="deposit * 3 + bonus * 20"
+              className="w-full mt-2 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm min-h-[100px]"
+              placeholder="Matematiksel formül: deposit * 3 + bonus * 20&#10;veya doğal dil: maksimum 1500 TL çekim yapabilir. yatırım miktarı 1000 TL olmalıdır..."
             />
+            
+            {/* Parse önizleme */}
+            {editForm.max_withdrawal_formula && (
+              <div className="mt-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                <p className="text-xs text-blue-400 mb-1 font-semibold">AI Parse Önizleme:</p>
+                {(() => {
+                  const parsed = parseNaturalLanguageFormula(editForm.max_withdrawal_formula);
+                  if (parsed && parsed.confidence > 0.3) {
+                    return (
+                      <div className="text-xs">
+                        <code className="text-green-400 font-mono">{parsed.formula}</code>
+                        <p className="text-slate-400 mt-1">{parsed.description}</p>
+                        <p className="text-slate-500 mt-1">Güven: %{(parsed.confidence * 100).toFixed(0)}</p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <p className="text-xs text-slate-400">Matematiksel formül olarak kullanılacak</p>
+                  );
+                })()}
+              </div>
+            )}
+
             <div className="text-xs text-slate-400 mt-2 space-y-1">
               <p className="font-semibold text-amber-400 mb-1">📝 Kullanılabilir Değişkenler:</p>
               <ul className="space-y-1 list-disc list-inside">
@@ -368,6 +410,12 @@ export function BonusRulesManager() {
                 <li><code className="text-green-400">bonus</code> - Bonus miktarı</li>
                 <li><code className="text-green-400">multiplier</code> - Yukarıda tanımlanan çarpan</li>
                 <li><code className="text-green-400">fixed</code> - Yukarıda tanımlanan sabit tutar</li>
+              </ul>
+              <p className="font-semibold text-purple-400 mt-2 mb-1">💬 Doğal Dil Örnekleri:</p>
+              <ul className="space-y-1 list-disc list-inside text-slate-500">
+                <li>"maksimum 1500 TL çekim yapabilir"</li>
+                <li>"yatırım miktarı 1000 TL olmalıdır"</li>
+                <li>"bonus 3 katı" veya "yatırım 5 katı"</li>
               </ul>
             </div>
           </details>
