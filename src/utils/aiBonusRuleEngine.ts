@@ -271,26 +271,61 @@ export async function loadAIRulePrompts(): Promise<AIRulePrompt[]> {
 /**
  * AI prompt'u kaydeder
  */
-export async function saveAIRulePrompt(prompt: AIRulePrompt): Promise<boolean> {
+export async function saveAIRulePrompt(prompt: AIRulePrompt): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase
+    console.log('Saving AI prompt:', prompt);
+    
+    // Önce mevcut kaydı kontrol et
+    const { data: existing } = await supabase
       .from('ai_bonus_rule_prompts')
-      .upsert({
-        ...prompt,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'bonus_name'
-      });
+      .select('id')
+      .eq('bonus_name', prompt.bonus_name)
+      .maybeSingle();
 
-    if (error) {
-      console.error('Error saving AI prompt:', error);
-      return false;
+    const promptData: any = {
+      bonus_name: prompt.bonus_name.trim(),
+      prompt: prompt.prompt.trim(),
+      updated_at: new Date().toISOString()
+    };
+
+    if (existing) {
+      // Update
+      const { error } = await supabase
+        .from('ai_bonus_rule_prompts')
+        .update(promptData)
+        .eq('id', existing.id);
+
+      if (error) {
+        console.error('Update error:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        return { success: false, error: error.message };
+      }
+    } else {
+      // Insert
+      if (prompt.id) {
+        promptData.id = prompt.id;
+      }
+      promptData.created_at = new Date().toISOString();
+      
+      const { error } = await supabase
+        .from('ai_bonus_rule_prompts')
+        .insert([promptData]);
+
+      if (error) {
+        console.error('Insert error:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        console.error('Prompt data:', promptData);
+        return { success: false, error: error.message };
+      }
     }
 
-    return true;
+    return { success: true };
   } catch (err) {
     console.error('Error saving AI prompt:', err);
-    return false;
+    return { 
+      success: false, 
+      error: err instanceof Error ? err.message : 'Bilinmeyen hata' 
+    };
   }
 }
 

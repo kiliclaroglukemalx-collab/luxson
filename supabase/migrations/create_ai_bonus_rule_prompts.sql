@@ -17,7 +17,17 @@ DROP POLICY IF EXISTS "Allow all to insert ai prompts" ON ai_bonus_rule_prompts;
 DROP POLICY IF EXISTS "Allow all to update ai prompts" ON ai_bonus_rule_prompts;
 DROP POLICY IF EXISTS "Allow all to delete ai prompts" ON ai_bonus_rule_prompts;
 
--- Create policies (public erişim için)
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Allow all to read ai prompts" ON ai_bonus_rule_prompts;
+DROP POLICY IF EXISTS "Allow all to insert ai prompts" ON ai_bonus_rule_prompts;
+DROP POLICY IF EXISTS "Allow all to update ai prompts" ON ai_bonus_rule_prompts;
+DROP POLICY IF EXISTS "Allow all to delete ai prompts" ON ai_bonus_rule_prompts;
+DROP POLICY IF EXISTS "Authenticated users can read ai prompts" ON ai_bonus_rule_prompts;
+DROP POLICY IF EXISTS "Authenticated users can insert ai prompts" ON ai_bonus_rule_prompts;
+DROP POLICY IF EXISTS "Authenticated users can update ai prompts" ON ai_bonus_rule_prompts;
+DROP POLICY IF EXISTS "Authenticated users can delete ai prompts" ON ai_bonus_rule_prompts;
+
+-- Create policies (public erişim için - hem authenticated hem de anon)
 CREATE POLICY "Allow all to read ai prompts"
   ON ai_bonus_rule_prompts FOR SELECT
   USING (true);

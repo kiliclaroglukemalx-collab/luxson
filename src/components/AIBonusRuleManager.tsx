@@ -50,28 +50,32 @@ export function AIBonusRuleManager() {
 
     setLoading(true);
     try {
-      const success = await saveAIRulePrompt({
+      const result = await saveAIRulePrompt({
         id: editingPrompt?.id || crypto.randomUUID(),
         bonus_name: newPrompt.bonus_name.trim(),
         prompt: newPrompt.prompt.trim()
       });
 
-      if (success) {
+      if (result.success) {
         setMessage({ type: 'success', text: 'AI prompt başarıyla kaydedildi!' });
         setNewPrompt({ bonus_name: '', prompt: '' });
         setEditingPrompt(null);
         await loadData();
       } else {
-        setMessage({ type: 'error', text: 'Prompt kaydedilirken hata oluştu' });
+        setMessage({ 
+          type: 'error', 
+          text: result.error || 'Prompt kaydedilirken hata oluştu. Console\'u kontrol edin.' 
+        });
       }
     } catch (err) {
+      console.error('Save prompt error:', err);
       setMessage({
         type: 'error',
         text: err instanceof Error ? err.message : 'Kaydetme hatası'
       });
     } finally {
       setLoading(false);
-      setTimeout(() => setMessage(null), 3000);
+      setTimeout(() => setMessage(null), 5000);
     }
   };
 
