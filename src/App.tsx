@@ -10,6 +10,7 @@ import PersonelPerformanceSystem from './components/PersonelPerformanceSystem';
 import { WithdrawalErrorReport } from './components/WithdrawalErrorReport';
 import { BonusReport } from './components/BonusReport';
 import { BtagReport } from './components/BtagReport';
+import { AICommentator } from './components/AICommentator';
 import { BarChart3, User, Shield } from 'lucide-react';
 
 type Page = 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug' | 'personel' | 'withdrawal-errors' | 'bonus-report' | 'btag-report';
@@ -83,6 +84,13 @@ function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* AI Yorumlama Sistemi - Gizli, sadece performans sayfasında görünür */}
+        {currentPage === 'performance' && (
+          <div className="mb-6">
+            <AICommentator />
+          </div>
+        )}
+
         {!isUserMode && currentPage === 'upload' && (
           <FileUpload onUploadComplete={() => setRefreshTrigger(prev => prev + 1)} />
         )}
