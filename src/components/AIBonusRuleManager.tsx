@@ -49,33 +49,47 @@ export function AIBonusRuleManager() {
     }
 
     setLoading(true);
+    setMessage(null);
+    
     try {
+      console.log('🔄 Saving prompt...', { bonus_name: newPrompt.bonus_name });
+      
       const result = await saveAIRulePrompt({
         id: editingPrompt?.id || crypto.randomUUID(),
         bonus_name: newPrompt.bonus_name.trim(),
         prompt: newPrompt.prompt.trim()
       });
 
+      console.log('📊 Save result:', result);
+
       if (result.success) {
-        setMessage({ type: 'success', text: 'AI prompt başarıyla kaydedildi!' });
+        setMessage({ 
+          type: 'success', 
+          text: '✅ AI prompt başarıyla kaydedildi!' 
+        });
         setNewPrompt({ bonus_name: '', prompt: '' });
         setEditingPrompt(null);
-        await loadData();
+        // Kısa bir gecikme sonra verileri yenile
+        setTimeout(async () => {
+          await loadData();
+        }, 500);
       } else {
+        const errorMsg = result.error || 'Bilinmeyen hata';
+        console.error('❌ Save failed:', errorMsg);
         setMessage({ 
           type: 'error', 
-          text: result.error || 'Prompt kaydedilirken hata oluştu. Console\'u kontrol edin.' 
+          text: `❌ Kaydetme hatası: ${errorMsg}. Console'u kontrol edin.` 
         });
       }
     } catch (err) {
-      console.error('Save prompt error:', err);
+      console.error('💥 Exception in handleSavePrompt:', err);
       setMessage({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Kaydetme hatası'
+        text: `❌ Hata: ${err instanceof Error ? err.message : 'Bilinmeyen hata'}. Console'u kontrol edin.`
       });
     } finally {
       setLoading(false);
-      setTimeout(() => setMessage(null), 5000);
+      setTimeout(() => setMessage(null), 8000);
     }
   };
 
