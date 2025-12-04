@@ -140,7 +140,7 @@ export function BonusRulesManager() {
       }
 
       // Database'de max_withdrawal_formula NOT NULL olduğu için boş string yerine 'Sınırsız' gönderiyoruz
-      const ruleToSave = {
+      const ruleToSave: any = {
         bonus_name: editForm.bonus_name?.trim(),
         calculation_type: editForm.calculation_type || 'unlimited',
         multiplier: editForm.multiplier || 0,
@@ -148,7 +148,16 @@ export function BonusRulesManager() {
         max_withdrawal_formula: finalFormula || 'Sınırsız'
       };
 
+      // Undefined değerleri temizle
+      Object.keys(ruleToSave).forEach(key => {
+        if (ruleToSave[key] === undefined) {
+          delete ruleToSave[key];
+        }
+      });
+
       console.log('Kaydedilecek kural:', ruleToSave);
+      console.log('Adding new:', addingNew);
+      console.log('Editing ID:', editingId);
 
       if (addingNew) {
         const { data, error } = await supabase
@@ -158,8 +167,13 @@ export function BonusRulesManager() {
 
         if (error) {
           console.error('Insert error:', error);
+          console.error('Error details:', JSON.stringify(error, null, 2));
           console.error('Rule data:', ruleToSave);
-          throw new Error(`Kaydetme hatası: ${error.message}`);
+          setMessage({ 
+            type: 'error', 
+            text: `Kaydetme hatası: ${error.message}. Console'u kontrol edin.` 
+          });
+          return;
         }
         setMessage({ type: 'success', text: 'Yeni bonus kuralı eklendi' });
       } else if (editingId) {
@@ -171,8 +185,14 @@ export function BonusRulesManager() {
 
         if (error) {
           console.error('Update error:', error);
+          console.error('Error details:', JSON.stringify(error, null, 2));
           console.error('Rule data:', ruleToSave);
-          throw new Error(`Güncelleme hatası: ${error.message}`);
+          console.error('Editing ID:', editingId);
+          setMessage({ 
+            type: 'error', 
+            text: `Güncelleme hatası: ${error.message}. Console'u kontrol edin.` 
+          });
+          return;
         }
         setMessage({ type: 'success', text: 'Bonus kuralı güncellendi' });
       } else {

@@ -84,8 +84,8 @@ function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Sistem Yorumları - Tüm sayfalarda üstte */}
-        <AICommentator />
+        {/* Sistem Yorumları - Tüm sayfalarda üstte, sayfa tipine özel */}
+        <AICommentator pageType={currentPage} />
 
         {!isUserMode && currentPage === 'upload' && (
           <FileUpload onUploadComplete={() => setRefreshTrigger(prev => prev + 1)} />
