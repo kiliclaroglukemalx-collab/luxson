@@ -84,12 +84,8 @@ function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* AI Yorumlama Sistemi - Gizli, sadece performans sayfasında görünür */}
-        {currentPage === 'performance' && (
-          <div className="mb-6">
-            <AICommentator />
-          </div>
-        )}
+        {/* Sistem Yorumları - Tüm sayfalarda üstte */}
+        <AICommentator />
 
         {!isUserMode && currentPage === 'upload' && (
           <FileUpload onUploadComplete={() => setRefreshTrigger(prev => prev + 1)} />
