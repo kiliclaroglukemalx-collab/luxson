@@ -361,6 +361,13 @@ export function WithdrawalErrorReport({ refreshTrigger = 0 }: WithdrawalErrorRep
           })
         )}
       </div>
+
+      <ExcelSettingsModal
+        isOpen={showExcelSettings}
+        onClose={() => setShowExcelSettings(false)}
+        reportType="withdrawal-errors"
+        onExport={handleExport}
+      />
     </div>
   );
 }
