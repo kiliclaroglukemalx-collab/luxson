@@ -128,12 +128,14 @@ export function AICommentator({ pageType }: AICommentatorProps) {
 
       if (page === 'performance') {
         // Çalışan ve call personel verileri
-        const { data: employeeStats } = await supabase
+        const { data: employeeStats, error: employeeError } = await supabase
           .from('weekly_employee_stats')
           .select('*, employees(name)')
           .order('avg_processing_time');
 
-        if (employeeStats && employeeStats.length > 0) {
+        if (employeeError) {
+          console.warn('Weekly employee stats table may not exist:', employeeError.message);
+        } else if (employeeStats && employeeStats.length > 0) {
           const rejectionRates: Record<string, number> = {};
           const processingTimes: Array<{ name: string; time: number }> = [];
 
@@ -159,11 +161,13 @@ export function AICommentator({ pageType }: AICommentatorProps) {
         }
 
         // Call personel verileri
-        const { data: weeklyReports } = await supabase
+        const { data: weeklyReports, error: weeklyError } = await supabase
           .from('personel_weekly_reports')
           .select('*, personel_employees(name)');
 
-        if (weeklyReports) {
+        if (weeklyError) {
+          console.warn('Personel weekly reports table may not exist:', weeklyError.message);
+        } else if (weeklyReports) {
           const conversionRates: Record<string, number> = {};
           const weeklyTotals: Record<string, number> = {};
           const scores: Array<{ name: string; score: number }> = [];

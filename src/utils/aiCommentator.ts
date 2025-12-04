@@ -3,6 +3,8 @@
  * Sistemin tüm bileşenlerini analiz edip yorumlar üretir
  */
 
+import { supabase } from '../lib/supabase';
+
 export interface AIComment {
   type: 'info' | 'warning' | 'success' | 'error';
   title: string;
@@ -444,7 +446,12 @@ async function analyzeBonusRules(): Promise<AIComment | null> {
       .from('bonus_rules')
       .select('*');
 
-    if (error || !rules) return null;
+    if (error) {
+      console.warn('Bonus rules table may not exist:', error.message);
+      return null;
+    }
+
+    if (!rules || rules.length === 0) return null;
 
     const insights: string[] = [];
     const recommendations: string[] = [];
