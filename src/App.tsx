@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FileUpload } from './components/FileUpload';
 import { BonusRulesManager } from './components/BonusRulesManager';
+import { AIBonusRuleManager } from './components/AIBonusRuleManager';
 import { Navigation } from './components/Navigation';
 import MonthlyShiftPlanner from './components/MonthlyShiftPlanner';
 import SpecialOffers from './components/SpecialOffers';
@@ -92,7 +93,7 @@ function App() {
         )}
 
         {!isUserMode && currentPage === 'rules' && (
-          <BonusRulesManager />
+          <AIBonusRuleManager />
         )}
 
         {currentPage === 'withdrawal-errors' && (

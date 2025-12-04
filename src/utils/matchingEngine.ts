@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { BonusRule, Deposit, Bonus, Withdrawal } from '../lib/supabase';
+import { parseBonusRuleFromText, calculateMaxWithdrawal } from './aiBonusRuleEngine';
 
 export interface AnalysisResult {
   withdrawal: Withdrawal;
@@ -236,8 +237,8 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
       });
     }
 
-    // 3. Bonus kuralını bul
-    const bonusRule = linkedBonus
+    // 3. Bonus kuralını bul (önce DB'den, yoksa AI ile)
+    let bonusRule = linkedBonus
       ? bonusRules.find(br => {
           // Esnek eşleştirme - tam eşleşme veya içerme kontrolü
           return br.bonus_name === linkedBonus.bonus_name ||
@@ -251,8 +252,19 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
     let isOverpayment = false;
     let overpaymentAmount = 0;
     let calculationLog = '';
+    let aiCalculatedRule = null;
 
-    if (linkedBonus && bonusRule) {
+    // Eğer kural bulunamadıysa AI ile parse et
+    if (linkedBonus && !bonusRule) {
+      aiCalculatedRule = parseBonusRuleFromText(linkedBonus.bonus_name);
+      if (aiCalculatedRule && aiCalculatedRule.confidence > 0.7) {
+        calculationLog += `\n🤖 AI Analizi: Kural bulunamadı, AI ile analiz edildi\n`;
+        calculationLog += `AI Güven: ${(aiCalculatedRule.confidence * 100).toFixed(0)}%\n`;
+        calculationLog += `AI Formül: ${aiCalculatedRule.formula}\n`;
+      }
+    }
+
+    if (linkedBonus && (bonusRule || aiCalculatedRule)) {
       calculationLog += `=== ÇEKİM HATA RAPORU ===\n`;
       calculationLog += `Müşteri: ${withdrawal.customer_id}\n`;
       calculationLog += `Çekim Miktarı: ${withdrawal.amount}₺\n`;
@@ -306,6 +318,12 @@ export async function analyzeWithdrawals(): Promise<AnalysisResult[]> {
           maxAllowed = calculateFallbackMax(withdrawal, closestDeposit, linkedBonus, bonusRule);
           calculationLog += `Fallback Max: ${maxAllowed}₺\n`;
         }
+      } else if (aiCalculatedRule) {
+        // AI ile hesaplama yap
+        const aiResult = calculateMaxWithdrawal(aiCalculatedRule, linkedDeposit, linkedBonus);
+        maxAllowed = aiResult.maxAllowed;
+        calculationLog += `AI Hesaplama: ${aiResult.calculation}\n`;
+        calculationLog += `AI Güven: ${(aiResult.confidence * 100).toFixed(0)}%\n`;
       } else {
         // Klasik hesaplama tipleri
         if (bonusRule.calculation_type === 'fixed') {
