@@ -307,7 +307,7 @@ function loadFromLocalStorage(): AIRulePrompt[] {
 /**
  * AI prompt'u kaydeder - Önce localStorage, sonra database (güvenilir versiyon)
  */
-export async function saveAIRulePrompt(prompt: AIRulePrompt): Promise<{ success: boolean; error?: string }> {
+export async function saveAIRulePrompt(prompt: AIRulePrompt): Promise<{ success: boolean; error?: string; usedLocalStorage?: boolean }> {
   try {
     console.log('💾 Saving AI prompt:', { bonus_name: prompt.bonus_name, prompt_length: prompt.prompt.length });
     
@@ -333,12 +333,13 @@ export async function saveAIRulePrompt(prompt: AIRulePrompt): Promise<{ success:
 
       // Tablo yoksa sadece localStorage'da kalsın, hata verme
       if (checkError) {
-        if (checkError.message.includes('does not exist') || checkError.message.includes('schema cache')) {
-          console.info('ℹ️ Database table not found, using localStorage only:', checkError.message);
-          return { success: true }; // localStorage'a kaydedildi, başarılı
+        const errorMsg = checkError.message || '';
+        if (errorMsg.includes('does not exist') || errorMsg.includes('schema cache') || errorMsg.includes('not found')) {
+          console.info('ℹ️ Database table not found, using localStorage only');
+          return { success: true, usedLocalStorage: true }; // localStorage'a kaydedildi, başarılı
         }
         // Diğer hatalar için localStorage zaten kaydetti, yine de başarılı
-        return { success: true };
+        return { success: true, usedLocalStorage: true };
       }
 
       if (existing) {
@@ -350,10 +351,10 @@ export async function saveAIRulePrompt(prompt: AIRulePrompt): Promise<{ success:
 
         if (updateError) {
           console.warn('⚠️ Database update failed, but saved to localStorage:', updateError.message);
-          return { success: true }; // localStorage'a kaydedildi
+          return { success: true, usedLocalStorage: true }; // localStorage'a kaydedildi
         }
         console.log('✅ Prompt saved to both localStorage and database');
-        return { success: true };
+        return { success: true, usedLocalStorage: false };
       } else {
         // Insert
         const { error: insertError } = await supabase
@@ -365,10 +366,10 @@ export async function saveAIRulePrompt(prompt: AIRulePrompt): Promise<{ success:
 
         if (insertError) {
           console.warn('⚠️ Database insert failed, but saved to localStorage:', insertError.message);
-          return { success: true }; // localStorage'a kaydedildi
+          return { success: true, usedLocalStorage: true }; // localStorage'a kaydedildi
         }
         console.log('✅ Prompt saved to both localStorage and database');
-        return { success: true };
+        return { success: true, usedLocalStorage: false };
       }
     } catch (dbError) {
       // Database hatası olsa bile localStorage'a kaydedildi
