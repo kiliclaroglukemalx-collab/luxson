@@ -243,10 +243,11 @@ export function AIBonusRuleManager() {
           <div className="flex gap-2">
             <button
               onClick={handleSavePrompt}
-              className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg transition-all"
+              disabled={loading}
+              className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Save className="w-4 h-4" />
-              <span>{editingPrompt ? 'Güncelle' : 'Kaydet'}</span>
+              <Save className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <span>{loading ? 'Kaydediliyor...' : (editingPrompt ? 'Güncelle' : 'Kaydet')}</span>
             </button>
             {editingPrompt && (
               <button
