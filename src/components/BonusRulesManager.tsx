@@ -122,32 +122,43 @@ export function BonusRulesManager() {
         }
       }
 
+      // Database'de max_withdrawal_formula NOT NULL olduğu için boş string yerine boşluk gönderiyoruz
       const ruleToSave = {
-        ...editForm,
-        max_withdrawal_formula: finalFormula || (editForm.max_withdrawal_formula || '')
+        bonus_name: editForm.bonus_name?.trim(),
+        calculation_type: editForm.calculation_type || 'unlimited',
+        multiplier: editForm.multiplier || 0,
+        fixed_amount: editForm.fixed_amount || 0,
+        max_withdrawal_formula: finalFormula || (editForm.max_withdrawal_formula || ' ')
       };
 
       if (addingNew) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('bonus_rules')
-          .insert([ruleToSave]);
+          .insert([ruleToSave])
+          .select();
 
         if (error) {
           console.error('Insert error:', error);
-          throw error;
+          console.error('Rule data:', ruleToSave);
+          throw new Error(`Kaydetme hatası: ${error.message}`);
         }
         setMessage({ type: 'success', text: 'Yeni bonus kuralı eklendi' });
       } else if (editingId) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('bonus_rules')
           .update(ruleToSave)
-          .eq('id', editingId);
+          .eq('id', editingId)
+          .select();
 
         if (error) {
           console.error('Update error:', error);
-          throw error;
+          console.error('Rule data:', ruleToSave);
+          throw new Error(`Güncelleme hatası: ${error.message}`);
         }
         setMessage({ type: 'success', text: 'Bonus kuralı güncellendi' });
+      } else {
+        setMessage({ type: 'error', text: 'Kaydetme durumu belirlenemedi!' });
+        return;
       }
 
       await loadRules();
@@ -282,8 +293,8 @@ export function BonusRulesManager() {
               <label className="block text-sm font-medium text-slate-300 mb-2">
                 Çarpan Seçimi
               </label>
-              <div className="grid grid-cols-6 gap-2">
-                {[5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100].map((mult) => (
+              <div className="grid grid-cols-8 gap-2">
+                {[2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 18, 20, 24, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 120, 150, 200].map((mult) => (
                   <button
                     key={mult}
                     type="button"
@@ -303,7 +314,7 @@ export function BonusRulesManager() {
                   type="number"
                   min="1"
                   max="1000"
-                  step="5"
+                  step="1"
                   value={formulaMultiplier}
                   onChange={(e) => {
                     const val = parseInt(e.target.value) || 5;
@@ -311,7 +322,7 @@ export function BonusRulesManager() {
                   }}
                   className="w-24 px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                 />
-                <span className="text-sm text-slate-400">(5'er 5'er artırılabilir)</span>
+                <span className="text-sm text-slate-400">(Manuel değer girebilirsiniz)</span>
               </div>
             </div>
           )}
