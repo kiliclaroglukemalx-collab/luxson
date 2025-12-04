@@ -3,9 +3,8 @@ import { AlertTriangle, CheckCircle, XCircle, Info, RefreshCw, Download, Search,
 import { supabase } from '../lib/supabase';
 import { matchBonusesToDeposits, analyzeWithdrawals } from '../utils/matchingEngine';
 import type { AnalysisResult } from '../utils/matchingEngine';
-import { exportToExcel } from '../utils/excelExport';
+import { exportToExcel, type ExcelExportSettings } from '../utils/excelExport';
 import { ExcelSettingsModal } from './ExcelSettingsModal';
-import type { ExcelExportSettings } from '../utils/excelExport';
 
 interface WithdrawalErrorReportProps {
   refreshTrigger?: number;
@@ -139,6 +138,47 @@ export function WithdrawalErrorReport({ refreshTrigger = 0 }: WithdrawalErrorRep
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString('tr-TR');
+  };
+
+  const handleExport = async (settings: ExcelExportSettings) => {
+    try {
+      const dataToExport = filteredResults.map(r => ({
+        'Müşteri ID': r.withdrawal.customer_id,
+        'Çekim Miktarı': r.withdrawal.amount,
+        'Çekim Tarihi': formatDate(r.withdrawal.request_date),
+        'Durum': getStatus(r) === 'hata' ? 'HATA' : 
+                 getStatus(r) === 'dogru' ? 'DOĞRU' : 
+                 getStatus(r) === 'bonus_yok' ? 'BONUS YOK' : 'KURAL YOK',
+        'Max İzin Verilen': r.maxAllowed === Infinity ? 'Sınırsız' : r.maxAllowed,
+        'Fazla Ödeme': r.isOverpayment ? r.overpaymentAmount : 0,
+        'Yatırım Miktarı': r.deposit?.amount || 0,
+        'Yatırım Tarihi': r.deposit?.deposit_date ? formatDate(r.deposit.deposit_date) : '',
+        'Bonus Adı': r.bonus?.bonus_name || 'Yok',
+        'Bonus Miktarı': r.bonus?.amount || 0,
+        'Bonus Kuralı': r.bonusRule?.bonus_name || 'Yok',
+        'Hesaplama Log': r.calculationLog || '',
+      }));
+
+      const columns = [
+        { key: 'Müşteri ID', label: 'Müşteri ID', width: 15 },
+        { key: 'Çekim Miktarı', label: 'Çekim Miktarı', width: 15 },
+        { key: 'Çekim Tarihi', label: 'Çekim Tarihi', width: 20 },
+        { key: 'Durum', label: 'Durum', width: 12 },
+        { key: 'Max İzin Verilen', label: 'Max İzin Verilen', width: 15 },
+        { key: 'Fazla Ödeme', label: 'Fazla Ödeme', width: 15 },
+        { key: 'Yatırım Miktarı', label: 'Yatırım Miktarı', width: 15 },
+        { key: 'Yatırım Tarihi', label: 'Yatırım Tarihi', width: 20 },
+        { key: 'Bonus Adı', label: 'Bonus Adı', width: 25 },
+        { key: 'Bonus Miktarı', label: 'Bonus Miktarı', width: 15 },
+        { key: 'Bonus Kuralı', label: 'Bonus Kuralı', width: 25 },
+        { key: 'Hesaplama Log', label: 'Hesaplama Log', width: 50 },
+      ];
+
+      await exportToExcel(dataToExport, columns, 'Çekim Hata Raporu', settings);
+    } catch (error) {
+      console.error('Excel export error:', error);
+      alert('Excel dışa aktarma sırasında bir hata oluştu.');
+    }
   };
 
   if (loading && results.length === 0) {
