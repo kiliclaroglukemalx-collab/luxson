@@ -63,9 +63,12 @@ export function AIBonusRuleManager() {
       console.log('📊 Save result:', result);
 
       if (result.success) {
+        const message = result.usedLocalStorage 
+          ? '✅ AI prompt başarıyla kaydedildi! (Tarayıcıda saklandı - Database tablosu oluşturulduğunda otomatik sync yapılacak)'
+          : '✅ AI prompt başarıyla kaydedildi!';
         setMessage({ 
           type: 'success', 
-          text: '✅ AI prompt başarıyla kaydedildi! (localStorage\'a kaydedildi)' 
+          text: message
         });
         setNewPrompt({ bonus_name: '', prompt: '' });
         setEditingPrompt(null);
