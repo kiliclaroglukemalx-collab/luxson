@@ -247,9 +247,13 @@ export function calculateMaxWithdrawalFromPrompt(
 }
 
 /**
- * Tüm bonus kurallarını AI prompt'ları ile günceller - localStorage fallback ile
+ * Tüm bonus kurallarını AI prompt'ları ile yükler - Önce localStorage, sonra database
  */
 export async function loadAIRulePrompts(): Promise<AIRulePrompt[]> {
+  // Önce localStorage'dan yükle (her zaman çalışır)
+  const localPrompts = loadFromLocalStorage();
+  
+  // Sonra database'den yüklemeyi dene (sync için)
   try {
     const { data, error } = await supabase
       .from('ai_bonus_rule_prompts')
@@ -257,19 +261,28 @@ export async function loadAIRulePrompts(): Promise<AIRulePrompt[]> {
       .order('bonus_name');
 
     if (error) {
+      // Tablo yoksa sadece localStorage'dan döndür
+      if (error.message.includes('does not exist') || error.message.includes('schema cache')) {
+        console.info('ℹ️ Database table not found, using localStorage only');
+        return localPrompts;
+      }
       console.warn('⚠️ Database load error, using localStorage:', error.message);
-      return loadFromLocalStorage();
+      return localPrompts;
     }
 
-    // Database'den gelen verileri localStorage'a da kaydet (sync)
+    // Database'den veri geldiyse, localStorage ile birleştir
     if (data && data.length > 0) {
+      // Database'deki verileri localStorage'a da kaydet (sync)
       localStorage.setItem('ai_bonus_rule_prompts', JSON.stringify(data));
+      console.log('✅ Loaded from database and synced to localStorage:', data.length, 'prompts');
+      return data;
     }
 
-    return data || [];
+    // Database boşsa localStorage'dan döndür
+    return localPrompts.length > 0 ? localPrompts : [];
   } catch (err) {
-    console.error('Error loading AI prompts:', err);
-    return loadFromLocalStorage();
+    console.warn('⚠️ Database load exception, using localStorage:', err);
+    return localPrompts;
   }
 }
 
@@ -292,65 +305,79 @@ function loadFromLocalStorage(): AIRulePrompt[] {
 }
 
 /**
- * AI prompt'u kaydeder - Basit ve güvenilir versiyon
+ * AI prompt'u kaydeder - Önce localStorage, sonra database (güvenilir versiyon)
  */
 export async function saveAIRulePrompt(prompt: AIRulePrompt): Promise<{ success: boolean; error?: string }> {
   try {
     console.log('💾 Saving AI prompt:', { bonus_name: prompt.bonus_name, prompt_length: prompt.prompt.length });
     
-    // Tablo yoksa oluşturmayı dene (localStorage fallback)
     const promptData = {
       bonus_name: prompt.bonus_name.trim(),
       prompt: prompt.prompt.trim(),
       updated_at: new Date().toISOString()
     };
 
-    // Önce mevcut kaydı kontrol et
-    const { data: existing, error: checkError } = await supabase
-      .from('ai_bonus_rule_prompts')
-      .select('id')
-      .eq('bonus_name', promptData.bonus_name)
-      .maybeSingle();
-
-    if (checkError) {
-      // Tablo yoksa localStorage'a kaydet
-      console.warn('⚠️ Table check error, using localStorage fallback:', checkError.message);
-      return saveToLocalStorage(promptData);
+    // ÖNCE localStorage'a kaydet (her zaman çalışır)
+    const localStorageResult = saveToLocalStorage(promptData);
+    if (!localStorageResult.success) {
+      return localStorageResult;
     }
 
-    if (existing) {
-      // Update
-      const { error: updateError } = await supabase
+    // SONRA database'e kaydetmeyi dene (opsiyonel)
+    try {
+      const { data: existing, error: checkError } = await supabase
         .from('ai_bonus_rule_prompts')
-        .update(promptData)
-        .eq('id', existing.id);
+        .select('id')
+        .eq('bonus_name', promptData.bonus_name)
+        .maybeSingle();
 
-      if (updateError) {
-        console.error('❌ Update error:', updateError);
-        // Fallback to localStorage
-        return saveToLocalStorage(promptData);
+      // Tablo yoksa sadece localStorage'da kalsın, hata verme
+      if (checkError) {
+        if (checkError.message.includes('does not exist') || checkError.message.includes('schema cache')) {
+          console.info('ℹ️ Database table not found, using localStorage only:', checkError.message);
+          return { success: true }; // localStorage'a kaydedildi, başarılı
+        }
+        // Diğer hatalar için localStorage zaten kaydetti, yine de başarılı
+        return { success: true };
       }
-      console.log('✅ Prompt updated successfully');
-      return { success: true };
-    } else {
-      // Insert
-      const { error: insertError } = await supabase
-        .from('ai_bonus_rule_prompts')
-        .insert([{
-          ...promptData,
-          created_at: new Date().toISOString()
-        }]);
 
-      if (insertError) {
-        console.error('❌ Insert error:', insertError);
-        // Fallback to localStorage
-        return saveToLocalStorage(promptData);
+      if (existing) {
+        // Update
+        const { error: updateError } = await supabase
+          .from('ai_bonus_rule_prompts')
+          .update(promptData)
+          .eq('id', existing.id);
+
+        if (updateError) {
+          console.warn('⚠️ Database update failed, but saved to localStorage:', updateError.message);
+          return { success: true }; // localStorage'a kaydedildi
+        }
+        console.log('✅ Prompt saved to both localStorage and database');
+        return { success: true };
+      } else {
+        // Insert
+        const { error: insertError } = await supabase
+          .from('ai_bonus_rule_prompts')
+          .insert([{
+            ...promptData,
+            created_at: new Date().toISOString()
+          }]);
+
+        if (insertError) {
+          console.warn('⚠️ Database insert failed, but saved to localStorage:', insertError.message);
+          return { success: true }; // localStorage'a kaydedildi
+        }
+        console.log('✅ Prompt saved to both localStorage and database');
+        return { success: true };
       }
-      console.log('✅ Prompt inserted successfully');
+    } catch (dbError) {
+      // Database hatası olsa bile localStorage'a kaydedildi
+      console.warn('⚠️ Database error, but saved to localStorage:', dbError);
       return { success: true };
     }
   } catch (err) {
     console.error('❌ Exception in saveAIRulePrompt:', err);
+    // Son çare olarak localStorage'a kaydet
     const promptData = {
       bonus_name: prompt.bonus_name.trim(),
       prompt: prompt.prompt.trim(),
@@ -361,7 +388,7 @@ export async function saveAIRulePrompt(prompt: AIRulePrompt): Promise<{ success:
 }
 
 /**
- * localStorage'a kaydet (fallback)
+ * localStorage'a kaydet (birincil depolama)
  */
 function saveToLocalStorage(promptData: { bonus_name: string; prompt: string; updated_at: string }): { success: boolean; error?: string } {
   try {
@@ -371,19 +398,26 @@ function saveToLocalStorage(promptData: { bonus_name: string; prompt: string; up
     
     const index = prompts.findIndex(p => p.bonus_name === promptData.bonus_name);
     if (index >= 0) {
-      prompts[index] = { ...prompts[index], ...promptData };
+      prompts[index] = { 
+        ...prompts[index], 
+        ...promptData,
+        updated_at: new Date().toISOString()
+      };
+      console.log('💾 Updated in localStorage:', promptData.bonus_name);
     } else {
       prompts.push({
         id: crypto.randomUUID(),
         ...promptData,
         created_at: new Date().toISOString()
       });
+      console.log('💾 Added to localStorage:', promptData.bonus_name);
     }
     
     localStorage.setItem(key, JSON.stringify(prompts));
-    console.log('💾 Saved to localStorage as fallback');
+    console.log('✅ Total prompts in localStorage:', prompts.length);
     return { success: true };
   } catch (err) {
+    console.error('❌ localStorage save error:', err);
     return { 
       success: false, 
       error: err instanceof Error ? err.message : 'localStorage kaydetme hatası' 

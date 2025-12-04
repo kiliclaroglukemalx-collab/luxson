@@ -65,20 +65,20 @@ export function AIBonusRuleManager() {
       if (result.success) {
         setMessage({ 
           type: 'success', 
-          text: '✅ AI prompt başarıyla kaydedildi!' 
+          text: '✅ AI prompt başarıyla kaydedildi! (localStorage\'a kaydedildi)' 
         });
         setNewPrompt({ bonus_name: '', prompt: '' });
         setEditingPrompt(null);
         // Kısa bir gecikme sonra verileri yenile
         setTimeout(async () => {
           await loadData();
-        }, 500);
+        }, 300);
       } else {
         const errorMsg = result.error || 'Bilinmeyen hata';
         console.error('❌ Save failed:', errorMsg);
         setMessage({ 
           type: 'error', 
-          text: `❌ Kaydetme hatası: ${errorMsg}. Console'u kontrol edin.` 
+          text: `❌ Kaydetme hatası: ${errorMsg}` 
         });
       }
     } catch (err) {
