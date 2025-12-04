@@ -374,7 +374,7 @@ export async function saveAIRulePrompt(prompt: AIRulePrompt): Promise<{ success:
     } catch (dbError) {
       // Database hatası olsa bile localStorage'a kaydedildi
       console.warn('⚠️ Database error, but saved to localStorage:', dbError);
-      return { success: true };
+      return { success: true, usedLocalStorage: true };
     }
   } catch (err) {
     console.error('❌ Exception in saveAIRulePrompt:', err);
