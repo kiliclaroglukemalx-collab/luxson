@@ -167,7 +167,12 @@ export default function PerformanceReports({ refreshTrigger = 0 }: PerformanceRe
           .select('*')
           .order('processing_started_at', { ascending: false });
 
-        if (error) throw error;
+        if (error) {
+          console.warn('Payment system transactions table may not exist:', error.message);
+          setPaymentTransactions([]);
+          calculatePaymentStats([]);
+          return;
+        }
 
         setPaymentTransactions(data || []);
         calculatePaymentStats(data || []);
