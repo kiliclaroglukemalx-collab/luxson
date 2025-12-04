@@ -339,3 +339,4 @@ Mevcut hesaplama sistemi genel olarak çalışıyor, ancak bazı edge case'lerde
 
 Bu alanların iyileştirilmesi gerekiyor.
 
+

@@ -108,3 +108,4 @@ export function formatErrorForUser(error: unknown): string {
   return 'Beklenmeyen bir hata oluştu';
 }
 
+

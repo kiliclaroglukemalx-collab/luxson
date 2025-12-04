@@ -3,6 +3,9 @@ import { AlertTriangle, CheckCircle, XCircle, Info, RefreshCw, Download, Search,
 import { supabase } from '../lib/supabase';
 import { matchBonusesToDeposits, analyzeWithdrawals } from '../utils/matchingEngine';
 import type { AnalysisResult } from '../utils/matchingEngine';
+import { exportToExcel } from '../utils/excelExport';
+import { ExcelSettingsModal } from './ExcelSettingsModal';
+import type { ExcelExportSettings } from '../utils/excelExport';
 
 interface WithdrawalErrorReportProps {
   refreshTrigger?: number;
@@ -15,6 +18,7 @@ export function WithdrawalErrorReport({ refreshTrigger = 0 }: WithdrawalErrorRep
   const [results, setResults] = useState<AnalysisResult[]>([]);
   const [filter, setFilter] = useState<FilterType>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showExcelSettings, setShowExcelSettings] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     hata: 0,
@@ -161,14 +165,23 @@ export function WithdrawalErrorReport({ refreshTrigger = 0 }: WithdrawalErrorRep
               </p>
             </div>
           </div>
-          <button
-            onClick={loadData}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            <span>Yenile</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowExcelSettings(true)}
+              className="group flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all duration-300 transform hover:scale-105"
+            >
+              <Download className="w-4 h-4" />
+              <span className="text-sm">Excel</span>
+            </button>
+            <button
+              onClick={loadData}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <span>Yenile</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -351,4 +364,5 @@ export function WithdrawalErrorReport({ refreshTrigger = 0 }: WithdrawalErrorRep
     </div>
   );
 }
+
 

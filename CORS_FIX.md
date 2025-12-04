@@ -60,3 +60,4 @@ Supabase'in ücretsiz planında CORS ayarları genellikle otomatik olarak tüm o
 
 **Önemli**: CORS ayarları değişikliği hemen etkili olur, yeniden deploy gerekmez.
 
+

@@ -1,8 +1,8 @@
-import { Settings, Upload, Calendar, Tag, TrendingUp, Bug, Users, AlertTriangle } from 'lucide-react';
+import { Settings, Upload, Calendar, Tag, TrendingUp, Bug, Users, AlertTriangle, Gift, Hash } from 'lucide-react';
 
 interface NavigationProps {
-  currentPage: 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug' | 'personel' | 'withdrawal-errors';
-  onPageChange: (page: 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug' | 'personel' | 'withdrawal-errors') => void;
+  currentPage: 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug' | 'personel' | 'withdrawal-errors' | 'bonus-report' | 'btag-report';
+  onPageChange: (page: 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug' | 'personel' | 'withdrawal-errors' | 'bonus-report' | 'btag-report') => void;
   isUserMode?: boolean;
 }
 
@@ -10,7 +10,9 @@ export function Navigation({ currentPage, onPageChange, isUserMode = false }: Na
   const allNavItems = [
     { id: 'upload' as const, label: 'Dosya Yükleme', icon: Upload, adminOnly: true, description: 'Yatırım, bonus ve çekim raporlarını yükleyin' },
     { id: 'rules' as const, label: 'Bonus Kuralları', icon: Settings, adminOnly: true, description: 'Bonus hesaplama kurallarını yönetin' },
-    { id: 'withdrawal-errors' as const, label: 'Çekim Hata Raporu', icon: AlertTriangle, adminOnly: true, description: 'Fazla ödeme ve hata analizleri' },
+    { id: 'withdrawal-errors' as const, label: 'Çekim Hata Raporu', icon: AlertTriangle, adminOnly: false, description: 'Fazla ödeme ve hata analizleri' },
+    { id: 'bonus-report' as const, label: 'Bonus Raporu', icon: Gift, adminOnly: false, description: 'Bonus kullanım ve analiz raporları' },
+    { id: 'btag-report' as const, label: 'Btag Raporu', icon: Hash, adminOnly: false, description: 'Btag bazlı analiz raporları' },
     { id: 'debug' as const, label: 'Hesaplama Test', icon: Bug, adminOnly: true, description: 'Hesaplama motorunu test edin' },
     { id: 'performance' as const, label: 'Performans Raporları', icon: TrendingUp, adminOnly: false, description: 'Personel ve ödeme sistemi performansı' },
     { id: 'shifts' as const, label: 'Vardiya Yönetimi', icon: Calendar, adminOnly: false, description: 'Aylık vardiya planlaması' },

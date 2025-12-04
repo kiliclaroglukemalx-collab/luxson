@@ -42,3 +42,4 @@ Eğer otomatik deployment başlamazsa:
 
 **Not**: Yeni bir commit push ettik (`Force new deployment`), bu deployment'ı tetiklemeli.
 
+

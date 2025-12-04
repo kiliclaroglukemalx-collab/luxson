@@ -38,3 +38,4 @@ Build loglarını paylaşın, özellikle:
 
 **Not**: `.npmrc` dosyası `legacy-peer-deps=true` ayarını içerir, bu da peer dependency uyumsuzluklarını göz ardı eder.
 
+

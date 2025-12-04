@@ -149,3 +149,4 @@ Sorularınız için issue açabilirsiniz.
 
 **Not**: Bu proje aktif geliştirme aşamasındadır. Production'a almadan önce tüm testleri çalıştırdığınızdan emin olun.
 
+

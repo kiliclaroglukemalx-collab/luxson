@@ -52,3 +52,4 @@
 `npm ci` daha hızlı ve güvenilir (production için önerilir), ama `package-lock.json` güncel olmalı.
 `npm install` daha esnek ama biraz daha yavaş.
 
+

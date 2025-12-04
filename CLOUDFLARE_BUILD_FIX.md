@@ -46,3 +46,4 @@ git push
 
 `npm install` komutu `npm ci`'den daha esnek ve `package-lock.json` senkronize olmasa bile çalışır. Production için ideal değil ama deploy için sorun çözücü.
 
+

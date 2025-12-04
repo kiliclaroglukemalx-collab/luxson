@@ -232,3 +232,4 @@ Sorun yaşarsanız:
 
 **İpucu**: Cloudflare Pages, Vercel'den farklı olarak daha esnek build ayarları sunar ve genellikle daha az sorun yaşarsınız.
 
+

@@ -8,9 +8,11 @@ import PerformanceReports from './components/PerformanceReports';
 import { CalculationDebugger } from './components/CalculationDebugger';
 import PersonelPerformanceSystem from './components/PersonelPerformanceSystem';
 import { WithdrawalErrorReport } from './components/WithdrawalErrorReport';
+import { BonusReport } from './components/BonusReport';
+import { BtagReport } from './components/BtagReport';
 import { BarChart3, User, Shield } from 'lucide-react';
 
-type Page = 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug' | 'personel' | 'withdrawal-errors';
+type Page = 'upload' | 'rules' | 'performance' | 'shifts' | 'offers' | 'debug' | 'personel' | 'withdrawal-errors' | 'bonus-report' | 'btag-report';
 
 function App() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -89,12 +91,20 @@ function App() {
           <BonusRulesManager />
         )}
 
-        {!isUserMode && currentPage === 'withdrawal-errors' && (
+        {currentPage === 'withdrawal-errors' && (
           <WithdrawalErrorReport refreshTrigger={refreshTrigger} />
         )}
 
         {!isUserMode && currentPage === 'debug' && (
           <CalculationDebugger />
+        )}
+
+        {currentPage === 'bonus-report' && (
+          <BonusReport refreshTrigger={refreshTrigger} />
+        )}
+
+        {currentPage === 'btag-report' && (
+          <BtagReport refreshTrigger={refreshTrigger} />
         )}
 
         {currentPage === 'performance' && (

@@ -51,3 +51,4 @@ Cloudflare Pages ayarlarında build command'ı değiştirebilirsiniz:
 
 **Not**: `npm ci` komutu `package-lock.json`'ın `package.json` ile tam uyumlu olmasını gerektirir. Bu yüzden her `package.json` değişikliğinden sonra `npm install` çalıştırıp `package-lock.json`'ı güncellemek önemlidir.
 
+

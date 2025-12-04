@@ -233,3 +233,4 @@ Sorun yaşarsanız:
 
 **Not**: İlk deployment 5-10 dakika sürebilir. Sonraki deployment'lar genellikle 2-5 dakika sürer.
 
+
