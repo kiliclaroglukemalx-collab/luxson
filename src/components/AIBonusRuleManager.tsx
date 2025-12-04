@@ -1,94 +1,99 @@
 import { useState, useEffect } from 'react';
-import { Sparkles, RefreshCw, CheckCircle, AlertCircle, Brain, Zap } from 'lucide-react';
+import { Sparkles, RefreshCw, CheckCircle, AlertCircle, Brain, Zap, Save, Edit2, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { BonusRule } from '../lib/supabase';
-import { analyzeAndUpdateBonusRules, parseBonusRuleFromText, calculateMaxWithdrawal } from '../utils/aiBonusRuleEngine';
-import type { AICalculatedRule } from '../utils/aiBonusRuleEngine';
+import { loadAIRulePrompts, saveAIRulePrompt, parseRuleFromPrompt } from '../utils/aiBonusRuleEngine';
+import type { AIRulePrompt } from '../utils/aiBonusRuleEngine';
 
 export function AIBonusRuleManager() {
   const [rules, setRules] = useState<BonusRule[]>([]);
+  const [aiPrompts, setAiPrompts] = useState<AIRulePrompt[]>([]);
   const [loading, setLoading] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
-  const [aiAnalysis, setAiAnalysis] = useState<Record<string, AICalculatedRule>>({});
+  const [editingPrompt, setEditingPrompt] = useState<AIRulePrompt | null>(null);
+  const [newPrompt, setNewPrompt] = useState({ bonus_name: '', prompt: '' });
 
   useEffect(() => {
-    loadRules();
+    loadData();
   }, []);
 
-  const loadRules = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // Bonus kurallarını yükle
+      const { data: rulesData, error: rulesError } = await supabase
         .from('bonus_rules')
         .select('*')
         .order('bonus_name');
 
-      if (error) throw error;
-      setRules(data || []);
+      if (rulesError) throw rulesError;
+      setRules(rulesData || []);
 
-      // Her kural için AI analizi yap
-      const analysis: Record<string, AICalculatedRule> = {};
-      (data || []).forEach(rule => {
-        const aiRule = parseBonusRuleFromText(rule.bonus_name);
-        if (aiRule) {
-          analysis[rule.id] = aiRule;
-        }
-      });
-      setAiAnalysis(analysis);
+      // AI prompt'larını yükle
+      const prompts = await loadAIRulePrompts();
+      setAiPrompts(prompts);
     } catch (err) {
       setMessage({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Kurallar yüklenirken hata oluştu'
+        text: err instanceof Error ? err.message : 'Veriler yüklenirken hata oluştu'
       });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAnalyzeAll = async () => {
-    setAnalyzing(true);
-    setMessage(null);
-    try {
-      const result = await analyzeAndUpdateBonusRules();
-      
-      if (result.errors.length > 0) {
-        setMessage({
-          type: 'error',
-          text: `${result.updated} kural güncellendi, ${result.errors.length} hata oluştu`
-        });
-      } else {
-        setMessage({
-          type: 'success',
-          text: `${result.updated} bonus kuralı başarıyla AI ile analiz edildi ve güncellendi!`
-        });
-      }
+  const handleSavePrompt = async () => {
+    if (!newPrompt.bonus_name.trim() || !newPrompt.prompt.trim()) {
+      setMessage({ type: 'error', text: 'Bonus adı ve prompt gereklidir!' });
+      return;
+    }
 
-      await loadRules();
+    setLoading(true);
+    try {
+      const success = await saveAIRulePrompt({
+        id: editingPrompt?.id || crypto.randomUUID(),
+        bonus_name: newPrompt.bonus_name.trim(),
+        prompt: newPrompt.prompt.trim()
+      });
+
+      if (success) {
+        setMessage({ type: 'success', text: 'AI prompt başarıyla kaydedildi!' });
+        setNewPrompt({ bonus_name: '', prompt: '' });
+        setEditingPrompt(null);
+        await loadData();
+      } else {
+        setMessage({ type: 'error', text: 'Prompt kaydedilirken hata oluştu' });
+      }
     } catch (err) {
       setMessage({
         type: 'error',
-        text: err instanceof Error ? err.message : 'Analiz sırasında hata oluştu'
+        text: err instanceof Error ? err.message : 'Kaydetme hatası'
       });
     } finally {
-      setAnalyzing(false);
-      setTimeout(() => setMessage(null), 5000);
+      setLoading(false);
+      setTimeout(() => setMessage(null), 3000);
     }
   };
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.9) return 'text-green-400';
-    if (confidence >= 0.7) return 'text-amber-400';
-    return 'text-red-400';
+  const handleEditPrompt = (prompt: AIRulePrompt) => {
+    setEditingPrompt(prompt);
+    setNewPrompt({ bonus_name: prompt.bonus_name, prompt: prompt.prompt });
   };
 
-  const getConfidenceBadge = (confidence: number) => {
-    if (confidence >= 0.9) return 'bg-green-500/20 text-green-400 border-green-500/30';
-    if (confidence >= 0.7) return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-    return 'bg-red-500/20 text-red-400 border-red-500/30';
+  const handleCancelEdit = () => {
+    setEditingPrompt(null);
+    setNewPrompt({ bonus_name: '', prompt: '' });
   };
 
-  if (loading) {
+  const getPromptForRule = (ruleName: string): AIRulePrompt | undefined => {
+    return aiPrompts.find(p => 
+      p.bonus_name === ruleName ||
+      ruleName.includes(p.bonus_name) ||
+      p.bonus_name.includes(ruleName)
+    );
+  };
+
+  if (loading && rules.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500"></div>
@@ -108,17 +113,17 @@ export function AIBonusRuleManager() {
             <div>
               <h2 className="text-2xl font-bold text-white">AI Bonus Kural Yönetimi</h2>
               <p className="text-sm text-slate-300 mt-1">
-                Bonus kurallarını otomatik analiz eder ve hesaplar
+                Her bonus için doğal dil prompt'u ile kural tanımlayın
               </p>
             </div>
           </div>
           <button
-            onClick={handleAnalyzeAll}
-            disabled={analyzing}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+            onClick={loadData}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors disabled:opacity-50"
           >
-            <Zap className={`w-5 h-5 ${analyzing ? 'animate-spin' : ''}`} />
-            <span>{analyzing ? 'Analiz Ediliyor...' : 'Tüm Kuralları AI ile Analiz Et'}</span>
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <span>Yenile</span>
           </button>
         </div>
       </div>
@@ -139,13 +144,115 @@ export function AIBonusRuleManager() {
         </div>
       )}
 
-      {/* Rules List */}
+      {/* New/Edit Prompt Form */}
+      <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
+        <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-purple-400" />
+          {editingPrompt ? 'AI Prompt Düzenle' : 'Yeni AI Prompt Ekle'}
+        </h3>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-200 mb-2">
+              Bonus Adı
+            </label>
+            <input
+              type="text"
+              value={newPrompt.bonus_name}
+              onChange={(e) => setNewPrompt({ ...newPrompt, bonus_name: e.target.value })}
+              className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              placeholder="Örn: %25 Spor Kayıp Bonusu"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-200 mb-2">
+              AI Prompt (Doğal Dil Kural Açıklaması)
+            </label>
+            <textarea
+              value={newPrompt.prompt}
+              onChange={(e) => setNewPrompt({ ...newPrompt, prompt: e.target.value })}
+              className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 min-h-[120px]"
+              placeholder="Örn: Bu bonus sınırsız çekim sağlar. Herhangi bir limit yoktur."
+            />
+            <div className="mt-2 text-xs text-slate-400 bg-blue-500/10 border border-blue-500/30 p-3 rounded-lg">
+              <p className="font-semibold text-blue-400 mb-1">💡 Prompt Örnekleri:</p>
+              <ul className="space-y-1 text-blue-300">
+                <li>• "Sınırsız çekim - limit yok"</li>
+                <li>• "Yatırım miktarının 50 katı çekilebilir"</li>
+                <li>• "Bonus miktarının 20 katı çekilebilir"</li>
+                <li>• "Yatırım + 500₺ çekilebilir"</li>
+                <li>• "Yatırım ve bonus toplamının 10 katı çekilebilir"</li>
+              </ul>
+            </div>
+          </div>
+
+          {newPrompt.prompt && (
+            <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700">
+              <div className="text-xs text-slate-400 mb-2">AI Analiz Önizleme:</div>
+              {(() => {
+                const parsed = parseRuleFromPrompt(newPrompt.prompt);
+                return (
+                  <div className="space-y-2 text-sm">
+                    <div className="text-white">
+                      <span className="text-slate-400">Tip:</span> {parsed.calculationType}
+                    </div>
+                    {parsed.multiplier && (
+                      <div className="text-white">
+                        <span className="text-slate-400">Çarpan:</span> {parsed.multiplier}
+                      </div>
+                    )}
+                    {parsed.fixedAmount && (
+                      <div className="text-white">
+                        <span className="text-slate-400">Sabit Tutar:</span> {parsed.fixedAmount}₺
+                      </div>
+                    )}
+                    <div className="text-white">
+                      <span className="text-slate-400">Formül:</span> <code className="text-purple-300">{parsed.formula}</code>
+                    </div>
+                    <div className="text-white">
+                      <span className="text-slate-400">Güven:</span> <span className={parsed.confidence > 0.8 ? 'text-green-400' : 'text-amber-400'}>{(parsed.confidence * 100).toFixed(0)}%</span>
+                    </div>
+                    <div className="text-slate-300 text-xs mt-2">
+                      <span className="text-slate-400">Mantık:</span> {parsed.reasoning}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleSavePrompt}
+              className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg transition-all"
+            >
+              <Save className="w-4 h-4" />
+              <span>{editingPrompt ? 'Güncelle' : 'Kaydet'}</span>
+            </button>
+            {editingPrompt && (
+              <button
+                onClick={handleCancelEdit}
+                className="flex items-center gap-2 px-6 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4" />
+                <span>İptal</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Rules List with AI Prompts */}
       <div className="space-y-4">
+        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+          <Zap className="w-5 h-5 text-amber-400" />
+          Bonus Kuralları ve AI Prompt'ları
+        </h3>
+
         {rules.map((rule) => {
-          const aiRule = aiAnalysis[rule.id];
-          const hasFormula = rule.max_withdrawal_formula && 
-                            rule.max_withdrawal_formula !== 'Sınırsız' &&
-                            rule.max_withdrawal_formula.trim() !== '';
+          const aiPrompt = getPromptForRule(rule.bonus_name);
+          const parsed = aiPrompt ? parseRuleFromPrompt(aiPrompt.prompt) : null;
 
           return (
             <div
@@ -155,77 +262,49 @@ export function AIBonusRuleManager() {
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-bold text-white">{rule.bonus_name}</h3>
-                    {aiRule && (
-                      <span className={`px-2 py-1 rounded text-xs font-semibold border ${getConfidenceBadge(aiRule.confidence)}`}>
-                        AI Güven: {(aiRule.confidence * 100).toFixed(0)}%
+                    <h4 className="text-lg font-bold text-white">{rule.bonus_name}</h4>
+                    {aiPrompt ? (
+                      <span className="px-2 py-1 rounded text-xs font-semibold bg-green-500/20 text-green-400 border border-green-500/30">
+                        AI Prompt Tanımlı
+                      </span>
+                    ) : (
+                      <span className="px-2 py-1 rounded text-xs font-semibold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                        AI Prompt Yok
                       </span>
                     )}
                   </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                    <div className="bg-slate-900/50 rounded-lg p-3">
-                      <div className="text-xs text-slate-400 mb-1">Hesaplama Tipi</div>
-                      <div className="text-white font-semibold">
-                        {rule.calculation_type === 'unlimited' ? 'Sınırsız' :
-                         rule.calculation_type === 'multiplier' ? 'Çarpan' :
-                         'Sabit'}
-                      </div>
-                    </div>
-                    
-                    {rule.calculation_type === 'multiplier' && (
-                      <div className="bg-slate-900/50 rounded-lg p-3">
-                        <div className="text-xs text-slate-400 mb-1">Çarpan</div>
-                        <div className="text-white font-semibold">{rule.multiplier}</div>
-                      </div>
-                    )}
-                    
-                    {rule.calculation_type === 'fixed' && (
-                      <div className="bg-slate-900/50 rounded-lg p-3">
-                        <div className="text-xs text-slate-400 mb-1">Sabit Tutar</div>
-                        <div className="text-white font-semibold">{rule.fixed_amount}₺</div>
-                      </div>
-                    )}
-                  </div>
 
-                  {hasFormula ? (
-                    <div className="mt-4 bg-green-500/10 border border-green-500/30 rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <CheckCircle className="w-4 h-4 text-green-400" />
-                        <span className="text-sm font-semibold text-green-400">Formül Tanımlı</span>
+                  {aiPrompt ? (
+                    <div className="space-y-3">
+                      <div className="bg-slate-900/50 rounded-lg p-4 border border-slate-700">
+                        <div className="text-xs text-slate-400 mb-2">AI Prompt:</div>
+                        <div className="text-white text-sm mb-3">{aiPrompt.prompt}</div>
+                        {parsed && (
+                          <div className="space-y-1 text-xs">
+                            <div className="text-slate-300">
+                              <span className="text-slate-400">Formül:</span> <code className="text-purple-300">{parsed.formula}</code>
+                            </div>
+                            <div className="text-slate-300">
+                              <span className="text-slate-400">Güven:</span> <span className={parsed.confidence > 0.8 ? 'text-green-400' : 'text-amber-400'}>{(parsed.confidence * 100).toFixed(0)}%</span>
+                            </div>
+                            <div className="text-slate-300">
+                              <span className="text-slate-400">Mantık:</span> {parsed.reasoning}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <code className="text-xs text-green-300 font-mono">{rule.max_withdrawal_formula}</code>
+                      <button
+                        onClick={() => handleEditPrompt(aiPrompt)}
+                        className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors text-sm"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                        <span>Düzenle</span>
+                      </button>
                     </div>
                   ) : (
-                    <div className="mt-4 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-1">
-                        <AlertCircle className="w-4 h-4 text-amber-400" />
-                        <span className="text-sm font-semibold text-amber-400">Formül Tanımlanmamış</span>
-                      </div>
-                      {aiRule && (
-                        <div className="mt-2">
-                          <div className="text-xs text-amber-300 mb-1">AI Önerisi:</div>
-                          <code className="text-xs text-amber-200 font-mono">{aiRule.formula}</code>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {aiRule && (
-                    <div className="mt-4 bg-slate-900/50 rounded-lg p-3">
-                      <div className="text-xs text-slate-400 mb-2">AI Analizi</div>
-                      <div className="text-sm text-slate-300 space-y-1">
-                        <div>Tip: <span className="text-white font-semibold">{aiRule.calculationType}</span></div>
-                        {aiRule.multiplier && (
-                          <div>Çarpan: <span className="text-white font-semibold">{aiRule.multiplier}</span></div>
-                        )}
-                        {aiRule.fixedAmount && (
-                          <div>Sabit: <span className="text-white font-semibold">{aiRule.fixedAmount}₺</span></div>
-                        )}
-                        <div>Formül: <code className="text-purple-300">{aiRule.formula}</code></div>
-                        <div className={`mt-2 ${getConfidenceColor(aiRule.confidence)}`}>
-                          Güven: {(aiRule.confidence * 100).toFixed(0)}%
-                        </div>
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
+                      <div className="text-sm text-amber-400 mb-2">
+                        Bu bonus için AI prompt tanımlanmamış. Yukarıdaki formdan ekleyebilirsiniz.
                       </div>
                     </div>
                   )}
@@ -240,10 +319,9 @@ export function AIBonusRuleManager() {
         <div className="bg-slate-800/50 rounded-xl p-12 text-center border border-slate-700">
           <Sparkles className="w-16 h-16 text-slate-500 mx-auto mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">Henüz Bonus Kuralı Yok</h3>
-          <p className="text-slate-400">AI analiz edilecek bonus kuralı bulunamadı.</p>
+          <p className="text-slate-400">AI prompt tanımlanacak bonus kuralı bulunamadı.</p>
         </div>
       )}
     </div>
   );
 }
-
